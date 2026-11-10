@@ -48,18 +48,18 @@ describe("decide (idle rule)", () => {
     })
   })
 
-  it("reports deferral reasons instead of napping while work is pending", () => {
-    const deferReasons = ["draft is being edited", "stream still running"]
+  it("reports deferral reasons instead of napping when a nap is unsafe", () => {
+    const deferReasons = ["draft unreadable", "wake command line refused"]
     expect(decide(input({ now: start.lastInputAt + 15 * MINUTE, deferReasons }), options)).toEqual({
       action: "wait",
       checkAfterMs: 5_000,
-      deferred: ["draft is being edited", "stream still running"],
+      deferred: ["draft unreadable", "wake command line refused"],
     })
   })
 
   it("reports no deferred reasons when no nap was due", () => {
     expect(
-      decide(input({ now: start.lastInputAt + 14 * MINUTE, deferReasons: ["draft is being edited"] }), options),
+      decide(input({ now: start.lastInputAt + 14 * MINUTE, deferReasons: ["draft unreadable"] }), options),
     ).toEqual({ action: "wait", checkAfterMs: 5_000, deferred: [] })
   })
 
