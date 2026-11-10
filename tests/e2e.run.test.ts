@@ -15,6 +15,7 @@ import {
   writeServerConfig,
   type Scratch,
 } from "./e2e/harness.js"
+import { fakeProviderConfig, PERMISSION_DIALOG } from "./e2e/fake-provider.js"
 import { NapRun, readJsonLines, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
@@ -22,44 +23,12 @@ const napOptions = { idleMinutes: 0.25 }
 const NAP_TIMEOUT_MS = 40_000
 // Longer than the idle time plus the check interval, so the nap lands mid-stream.
 const SLOW = { chunks: 45, delayMs: 1_000 }
-// Text only the dialogs show; the transcript also shows the tool call itself.
-const PERMISSION_DIALOG = /Permission required .*nap-e2e-permission\.txt.* Allow once Always allow Reject/
+// Text only the question dialog shows.
 const QUESTION_DIALOG = /NAP_E2E question: pick one .*Alpha.*Beta.* Type your own answer/
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
 let providerLog = ""
-
-// Only the local fake provider is allowed. Tool rules live on each agent:
-// shell asks, so a permission prompt appears; the question tool is allowed.
-const agentPermissions = [
-  { action: "*", resource: "*", effect: "allow" },
-  { action: "shell", resource: "*", effect: "ask" },
-  { action: "question", resource: "*", effect: "allow" },
-]
-
-const serverConfig = (providerUrl: string) => ({
-  model: "local/deterministic",
-  policies: [
-    { action: "provider.use", resource: "*", effect: "deny" },
-    { action: "provider.use", resource: "local", effect: "allow" },
-  ],
-  providers: {
-    local: {
-      name: "Local fake provider",
-      package: "@opencode/ai/providers/openai-compatible",
-      settings: { baseURL: `${providerUrl}/v1` },
-      models: {
-        deterministic: {
-          modelID: "deterministic",
-          capabilities: { tools: true, input: ["text"], output: ["text"] },
-          limit: { context: 32_768, output: 4_096 },
-        },
-      },
-    },
-  },
-  agents: { build: { permissions: agentPermissions }, plan: { permissions: agentPermissions } },
-})
 
 const api = (method: string, path: string, body?: unknown) => callApi(scratch, server.url, method, path, body)
 const prompt = (sessionID: string, text: string) => api("POST", `/api/session/${sessionID}/prompt`, { text })
@@ -84,7 +53,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: runs and prompts survive a
     scratch = await createScratch()
     providerLog = join(scratch.root, "provider.jsonl")
     const provider = await startProvider(scratch, providerLog, SLOW)
-    await writeServerConfig(scratch, serverConfig(provider.url))
+    await writeServerConfig(scratch, fakeProviderConfig(provider.url))
     server = await startServer(scratch)
   }, 300_000)
 

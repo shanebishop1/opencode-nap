@@ -9,6 +9,13 @@ export const SPACE = " "
 // A left click, press and release, in SGR mouse encoding.
 export const CLICK = "\x1b[<0;20;10M\x1b[<0;20;10m"
 
+// Anything but control characters, which could submit or reach a dialog.
+const isPrintable = (text: string): boolean =>
+  [...text].every(character => {
+    const code = character.codePointAt(0) ?? 0
+    return code >= 0x20 && (code < 0x7f || code > 0x9f)
+  })
+
 export const sleep = (milliseconds: number) => new Promise(done => setTimeout(done, milliseconds))
 
 export type Entry = Record<string, any>
@@ -75,9 +82,8 @@ export class Watch {
 }
 
 /**
- * Drives one TUI under the PTY. It only ever writes to the terminal through
- * `wake`, which first proves the window is napping, so nothing can reach an
- * awake prompt.
+ * Drives one TUI under the PTY. It sends an awake prompt only printable draft
+ * text, and wake input only once the window is proved to be napping.
  */
 export class NapRun {
   private cardsSeen = 0
@@ -124,6 +130,21 @@ export class NapRun {
     }, 5_000, "the stub and its reader")
     this.cardsSeen = this.cards()
     return { at: card, rssKiB: tree.rssKiB, count: tree.count }
+  }
+
+  /** Types a draft into the awake prompt, one character at a time. */
+  async typeDraft(text: string): Promise<void> {
+    if (!isPrintable(text)) throw new Error("only printable characters may be typed into an awake prompt")
+    for (const character of text) {
+      this.tui.write(character)
+      await sleep(20)
+    }
+  }
+
+  /** Pastes a draft into the awake prompt. Newlines inside a bracketed paste are text, not Enter. */
+  pasteDraft(text: string): void {
+    if (!isPrintable(text.replace(/\n/g, ""))) throw new Error("only printable characters and newlines may be pasted")
+    this.tui.write(`\x1b[200~${text}\x1b[201~`)
   }
 
   /** Sends a wake key or click to a window proved to be napping; returns when it was sent. */

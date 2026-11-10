@@ -5,11 +5,15 @@
 // Options: { logFile, controlDir }. Every report is one JSON line in logFile.
 // A test drops a file named after a request into controlDir; the plugin
 // handles it, deletes it and logs the result:
-//   state         route, open tabs, the stored value and the prompt's text
+//   state         route, open tabs, the stored value, the prompt's text and
+//                 which of the plugin's variables are in the environment
+//   prompt        the prompt's length, hash and cursor, and its text when short
+//   set           puts the file's text in the prompt, cursor at the end
 //   tab           opens the session ID in the file as a tab
 //   store         stores the file's text in plugin storage
 //   history-back  recalls the previous prompt from history
 //   clear         empties the prompt
+import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 
@@ -43,7 +47,22 @@ export default {
       tabs: attempt(() => api.ui.tabs.list().map(tab => tab.sessionID)),
       stored: attempt(() => stored.value),
       prompt: attempt(() => prompt()?.plainText ?? null),
+      napEnv: Object.keys(process.env).filter(name => name.startsWith("OPENCODE_NAP_")),
     })
+    // A 1 MB draft would make every report a megabyte, so long text is reported by hash.
+    const promptDetail = () => {
+      const editor = prompt()
+      if (!editor) return { focused: false }
+      const text = editor.plainText
+      return {
+        focused: true,
+        length: text.length,
+        sha256: createHash("sha256").update(text).digest("hex"),
+        text: text.length <= 4096 ? text : undefined,
+        cursorOffset: editor.cursorOffset,
+        logicalCursor: editor.logicalCursor,
+      }
+    }
     log("setup", { argv: process.argv.slice(2), ...state() })
 
     // The prompt is interactive once its editor has focus.
@@ -56,6 +75,12 @@ export default {
 
     const handlers = {
       state: () => state(),
+      prompt: () => promptDetail(),
+      set: text => {
+        prompt()?.setText(text)
+        prompt()?.gotoBufferEnd()
+        return { length: prompt()?.plainText.length ?? null }
+      },
       tab: sessionID => ({ opened: attempt(() => api.ui.tabs.open(sessionID)) }),
       store: async value => {
         await setStored(draft => {
@@ -80,9 +105,9 @@ export default {
         for (const [name, handle] of Object.entries(handlers)) {
           const file = join(controlDir, name)
           if (!existsSync(file)) continue
-          const input = readFileSync(file, "utf8").trim()
+          const input = readFileSync(file, "utf8")
           rmSync(file)
-          log(name, { input, result: await handle(input) })
+          log(name, { input: input.length <= 4096 ? input : `${input.length} characters`, result: await handle(input) })
         }
       } catch (error) {
         log("error", { error: String(error) })
