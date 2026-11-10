@@ -29,6 +29,21 @@ describe("checkGuards", () => {
     expect(checkGuards(withFacts({ platform: "win32" }))).toEqual({ ok: false, reason: "Windows is not supported" })
   })
 
+  it("accepts macOS", () => {
+    expect(checkGuards(withFacts({ platform: "darwin" }))).toEqual({ ok: true })
+  })
+
+  it("refuses other platforms, including one that could not be read", () => {
+    expect(checkGuards(withFacts({ platform: "freebsd" }))).toEqual({
+      ok: false,
+      reason: 'platform "freebsd" is not supported',
+    })
+    expect(checkGuards(withFacts({ platform: "unknown" }))).toEqual({
+      ok: false,
+      reason: 'platform "unknown" is not supported',
+    })
+  })
+
   it("refuses when process.execve is unavailable", () => {
     expect(checkGuards(withFacts({ hasExecve: false }))).toEqual({
       ok: false,
@@ -68,8 +83,11 @@ describe("checkGuards", () => {
     })
   })
 
-  it("accepts an unknown server pid", () => {
-    expect(checkGuards(withFacts({ serverPid: undefined }))).toEqual({ ok: true })
+  it("refuses when the server pid is unknown", () => {
+    expect(checkGuards(withFacts({ serverPid: undefined }))).toEqual({
+      ok: false,
+      reason: "the server pid is unknown",
+    })
   })
 
   it("refuses when stdin is not a terminal", () => {
@@ -107,11 +125,11 @@ describe("collectGuardFacts", () => {
 
     expect(facts.enabled).toBe(true)
     expect(facts.serverPid).toBeUndefined()
-    expect(typeof facts.platform).toBe("string")
+    expect(facts.platform).toBe(process.platform)
+    expect(facts.pid).toBe(process.pid)
+    expect(facts.args).toEqual(process.argv.slice(2))
     expect(typeof facts.hasExecve).toBe("boolean")
     expect(typeof facts.isMainThread).toBe("boolean")
-    expect(Array.isArray(facts.args)).toBe(true)
-    expect(typeof facts.pid).toBe("number")
     expect(typeof facts.stdinIsTTY).toBe("boolean")
     expect(typeof facts.stdoutIsTTY).toBe("boolean")
     expect(typeof facts.shExecutable).toBe("boolean")

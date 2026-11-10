@@ -18,6 +18,8 @@ export type GuardResult = { ok: true } | { ok: false; reason: string }
 
 const pass: GuardResult = { ok: true }
 
+const SUPPORTED_PLATFORMS = new Set(["linux", "darwin"])
+
 const refuse = (reason: string): GuardResult => ({ ok: false, reason })
 
 const isStandaloneFlag = (arg: string) => arg === "--standalone" || arg.startsWith("--standalone=")
@@ -25,9 +27,11 @@ const isStandaloneFlag = (arg: string) => arg === "--standalone" || arg.startsWi
 export function checkGuards(facts: GuardFacts): GuardResult {
   if (!facts.enabled) return refuse("disabled in options")
   if (facts.platform === "win32") return refuse("Windows is not supported")
+  if (!SUPPORTED_PLATFORMS.has(facts.platform)) return refuse(`platform "${facts.platform}" is not supported`)
   if (!facts.hasExecve) return refuse("process.execve is not available")
   if (!facts.isMainThread) return refuse("not on the main thread")
   if (facts.args.some(isStandaloneFlag)) return refuse("started with --standalone: the server runs in this process")
+  if (facts.serverPid === undefined) return refuse("the server pid is unknown")
   if (facts.serverPid === facts.pid) return refuse("the server runs in this process")
   if (!facts.stdinIsTTY || !facts.stdoutIsTTY) return refuse("stdin and stdout must be a terminal")
   if (!facts.shExecutable) return refuse("/bin/sh is not executable")
