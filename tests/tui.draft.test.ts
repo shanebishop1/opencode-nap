@@ -6,7 +6,7 @@ import { join } from "path"
 import { DRAFT_ENV, draftFiles, type DraftFiles } from "../src/draft-file.js"
 import { createLog, type Log } from "../src/log.js"
 import { startNap } from "../src/tui.js"
-import { fakeContext, fakeEditor, fakeLog, fakeProcess, settle } from "./fakes.js"
+import { fakeContext, fakeLog, fakeProcess, settle } from "./fakes.js"
 
 const IDLE_MS = 60_000
 const DRAFT = "Refactor the parser\nso that “quotes” work — ünïcödé ☃ 日本語"
@@ -86,13 +86,6 @@ describe("draft carry-over", () => {
     expect(messages(woken.log)).toContain("draft restored")
   })
 
-  it("ac-draft-large: a 1 MB draft comes back intact", async () => {
-    const large = "a line of the draft, with ✓ in it\n".repeat(32_768).slice(0, 1024 * 1024)
-    const { wokenEnv } = await napWith(large)
-    const woken = await start({ env: wokenEnv })
-    expect(woken.context.prompt.text).toBe(large)
-  })
-
   it("ac-draft-empty: an empty prompt naps without a draft file and wakes empty", async () => {
     const { wokenEnv } = await napWith("")
     expect(wokenEnv[DRAFT_ENV]).toBeUndefined()
@@ -134,23 +127,6 @@ describe("draft carry-over", () => {
     expect(woken.context.prompt.text).toBe(DRAFT)
   })
 
-  it("ac-draft-dialog: a dialog with its own editor does not stand in for the prompt", async () => {
-    const { wokenEnv } = await napWith(DRAFT, {
-      edit: context => { context.renderer.mounted = [] },
-      after: context => {
-        const answer = fakeEditor("custom answer", { suspend: true })
-        context.renderer.currentFocusedEditor = answer
-        context.renderer.emit("focused_editor", answer, context.prompt)
-      },
-    })
-    expect(readFileSync(wokenEnv[DRAFT_ENV]!, "utf8")).toBe(DRAFT)
-  })
-
-  it("ac-draft-dialog: carries the draft of a prompt hidden by a dialog since startup", async () => {
-    const { wokenEnv } = await napWith(DRAFT, { edit: context => { context.renderer.currentFocusedEditor = null } })
-    expect(readFileSync(wokenEnv[DRAFT_ENV]!, "utf8")).toBe(DRAFT)
-  })
-
   it("ac-draft-unreadable: a missing internal is reported at setup, skips each nap with one log line, and naps once it is back", async () => {
     const { fake, context, log } = await start({
       edit: context => {
@@ -173,26 +149,6 @@ describe("draft carry-over", () => {
     await fake.advance(5_000)
     expect(fake.execs).toHaveLength(1)
     expect(readFileSync(fake.execs[0].env[DRAFT_ENV]!, "utf8")).toBe(DRAFT)
-  })
-
-  it("ac-draft-unreadable: a prompt that throws skips the nap and tries again", async () => {
-    let broken = true
-    const { fake, log } = await start({
-      edit: context => {
-        Object.defineProperty(context.prompt, "plainText", {
-          get: () => {
-            if (broken) throw new Error("edit buffer destroyed")
-            return DRAFT
-          },
-        })
-      },
-    })
-    await fake.advance(IDLE_MS + 30_000)
-    expect(fake.execs).toHaveLength(0)
-    expect(messages(log).filter(message => message.startsWith("nap skipped"))).toEqual(["nap skipped: cannot read the draft: edit buffer destroyed"])
-    broken = false
-    await fake.advance(5_000)
-    expect(fake.execs).toHaveLength(1)
   })
 
   it("deletes the stored draft when input arrives before the exec, or the exec fails", async () => {

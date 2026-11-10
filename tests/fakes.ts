@@ -49,10 +49,8 @@ export function fakeLog(): Log & { entries: LogEntry[] } {
 export const SESSION_ID = "ses_abc"
 export const SERVER_URL = "http://127.0.0.1:4096"
 
-export const PROMPT_TRAITS = { owner: "opencode", role: "prompt" }
-
 /** An OpenTUI edit buffer; OpenCode's session prompt unless other traits are given. */
-export function fakeEditor(text = "", traits: unknown = { ...PROMPT_TRAITS }) {
+export function fakeEditor(text = "", traits: unknown = { owner: "opencode", role: "prompt" }) {
   const editor = {
     text,
     traits,
@@ -71,8 +69,6 @@ export function fakeEditor(text = "", traits: unknown = { ...PROMPT_TRAITS }) {
   }
   return editor
 }
-
-export type FakeEditor = ReturnType<typeof fakeEditor>
 
 /** A TUI context with every internal the plugin uses; the empty prompt is focused. */
 export function fakeContext(stdin: FakeEmitter) {
