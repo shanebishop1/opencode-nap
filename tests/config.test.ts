@@ -9,6 +9,7 @@ describe("defaults", () => {
       napOnBlur: false,
       blurIdleMinutes: undefined,
       carryDraft: true,
+      debugLogFile: undefined,
     })
   })
 })
@@ -26,6 +27,10 @@ describe("parseOptions", () => {
     expect(parseOptions({ napOnBlur: true })).toEqual({ ok: true, options: { ...defaults, napOnBlur: true } })
     expect(parseOptions({ blurIdleMinutes: 5 })).toEqual({ ok: true, options: { ...defaults, blurIdleMinutes: 5 } })
     expect(parseOptions({ carryDraft: false })).toEqual({ ok: true, options: { ...defaults, carryDraft: false } })
+    expect(parseOptions({ debugLogFile: "/tmp/nap.log" })).toEqual({
+      ok: true,
+      options: { ...defaults, debugLogFile: "/tmp/nap.log" },
+    })
   })
 
   it("rejects non-boolean values for boolean options", () => {
@@ -57,6 +62,15 @@ describe("parseOptions", () => {
       expect(parseOptions({ blurIdleMinutes })).toEqual({
         ok: false,
         message: 'invalid option "blurIdleMinutes": must be a number greater than 0',
+      })
+    }
+  })
+
+  it("rejects a debug log file that is not an absolute path", () => {
+    for (const debugLogFile of ["nap.log", "", 42]) {
+      expect(parseOptions({ debugLogFile })).toEqual({
+        ok: false,
+        message: 'invalid option "debugLogFile": must be an absolute path',
       })
     }
   })

@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path"
 import { z } from "zod"
 
 export interface NapOptions {
@@ -6,6 +7,7 @@ export interface NapOptions {
   napOnBlur: boolean
   blurIdleMinutes: number | undefined
   carryDraft: boolean
+  debugLogFile: string | undefined
 }
 
 export const defaults: NapOptions = {
@@ -14,6 +16,7 @@ export const defaults: NapOptions = {
   napOnBlur: false,
   blurIdleMinutes: undefined,
   carryDraft: true,
+  debugLogFile: undefined,
 }
 
 export type ParsedOptions = { ok: true; options: NapOptions } | { ok: false; message: string }
@@ -27,6 +30,7 @@ const schema = z
     napOnBlur: z.boolean().optional(),
     blurIdleMinutes: minutes.optional(),
     carryDraft: z.boolean().optional(),
+    debugLogFile: z.string().refine(isAbsolute).optional(),
   })
   .strict()
 
@@ -36,6 +40,7 @@ const expected: Record<keyof NapOptions, string> = {
   napOnBlur: "must be true or false",
   blurIdleMinutes: "must be a number greater than 0",
   carryDraft: "must be true or false",
+  debugLogFile: "must be an absolute path",
 }
 
 function describeIssue(issue: z.ZodIssue): string {
@@ -64,6 +69,7 @@ export function parseOptions(raw: unknown): ParsedOptions {
       napOnBlur: data.napOnBlur ?? defaults.napOnBlur,
       blurIdleMinutes: data.blurIdleMinutes,
       carryDraft: data.carryDraft ?? defaults.carryDraft,
+      debugLogFile: data.debugLogFile,
     },
   }
 }
