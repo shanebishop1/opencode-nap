@@ -1,0 +1,59 @@
+{
+  "name": "opencode-nap",
+  "version": "0.0.0",
+  "description": "OpenCode TUI plugin that naps idle windows to free memory and wakes them into the same session",
+  "type": "module",
+  "exports": {
+    "./tui": {
+      "types": "./dist/tui.d.ts",
+      "import": "./dist/tui.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "test": "bun test",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit",
+    "ci:check": "npm run lint && npm run typecheck && npm test",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "tui",
+    "memory",
+    "idle"
+  ],
+  "author": "Shane Bishop <71288697+shanebishop1@users.noreply.github.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shanebishop1/opencode-nap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shanebishop1/opencode-nap/issues"
+  },
+  "homepage": "https://github.com/shanebishop1/opencode-nap#readme",
+  "dependencies": {
+    "@opencode/plugin": "2.2.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/bun": "latest",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
+    "jiti": "^2.7.0",
+    "solid-js": "^1.9.17",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.69.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0",
+    "opencode": ">=2.2.4"
+  }
+}
