@@ -11,7 +11,6 @@ export interface GuardFacts {
   stdinIsTTY: boolean
   stdoutIsTTY: boolean
   shExecutable: boolean
-  enabled: boolean
 }
 
 export type GuardResult = { ok: true } | { ok: false; reason: string }
@@ -25,7 +24,6 @@ const refuse = (reason: string): GuardResult => ({ ok: false, reason })
 const isStandaloneFlag = (arg: string) => arg === "--standalone" || arg.startsWith("--standalone=")
 
 export function checkGuards(facts: GuardFacts): GuardResult {
-  if (!facts.enabled) return refuse("disabled in options")
   if (facts.platform === "win32") return refuse("Windows is not supported")
   if (!SUPPORTED_PLATFORMS.has(facts.platform)) return refuse(`platform "${facts.platform}" is not supported`)
   if (!facts.hasExecve) return refuse("process.execve is not available")
@@ -57,10 +55,10 @@ function isShExecutable(platform: string): boolean {
   }, false)
 }
 
-export function collectGuardFacts(input: { enabled: boolean; serverPid: number | undefined }): GuardFacts {
+export function collectGuardFacts(serverPid: number | undefined): GuardFacts {
   const platform = readOr(() => process.platform, "unknown")
   // An unreadable pid is treated as the server's pid when that is known.
-  const pid = readOr(() => process.pid, input.serverPid ?? -1)
+  const pid = readOr(() => process.pid, serverPid ?? -1)
   return {
     platform,
     hasExecve: readOr(() => typeof process.execve === "function", false),
@@ -68,10 +66,9 @@ export function collectGuardFacts(input: { enabled: boolean; serverPid: number |
     // An unreadable argv could hide --standalone, so assume it is present.
     args: readOr(() => process.argv.slice(2), ["--standalone"]),
     pid,
-    serverPid: input.serverPid,
+    serverPid,
     stdinIsTTY: readOr(() => process.stdin.isTTY === true, false),
     stdoutIsTTY: readOr(() => process.stdout.isTTY === true, false),
     shExecutable: isShExecutable(platform),
-    enabled: input.enabled,
   }
 }

@@ -1,28 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import { checkGuards, collectGuardFacts, type GuardFacts } from "../src/guards.js"
+import { safeFacts } from "./fakes.js"
 
-const safe: GuardFacts = {
-  platform: "linux",
-  hasExecve: true,
-  isMainThread: true,
-  args: [],
-  pid: 100,
-  serverPid: 200,
-  stdinIsTTY: true,
-  stdoutIsTTY: true,
-  shExecutable: true,
-  enabled: true,
-}
-
-const withFacts = (overrides: Partial<GuardFacts>): GuardFacts => ({ ...safe, ...overrides })
+const withFacts = (overrides: Partial<GuardFacts>): GuardFacts => ({ ...safeFacts, ...overrides })
 
 describe("checkGuards", () => {
   it("passes when every guard is satisfied", () => {
-    expect(checkGuards(safe)).toEqual({ ok: true })
-  })
-
-  it("refuses when disabled in options", () => {
-    expect(checkGuards(withFacts({ enabled: false }))).toEqual({ ok: false, reason: "disabled in options" })
+    expect(checkGuards(safeFacts)).toEqual({ ok: true })
   })
 
   it("refuses on Windows", () => {
@@ -111,19 +95,18 @@ describe("checkGuards", () => {
     })
   })
 
-  it("checks in order, so Windows with disabled options reports the disabled reason", () => {
-    expect(checkGuards(withFacts({ enabled: false, platform: "win32" }))).toEqual({
+  it("checks in order, so Windows without execve reports Windows", () => {
+    expect(checkGuards(withFacts({ platform: "win32", hasExecve: false }))).toEqual({
       ok: false,
-      reason: "disabled in options",
+      reason: "Windows is not supported",
     })
   })
 })
 
 describe("collectGuardFacts", () => {
   it("returns real process facts as booleans without throwing", () => {
-    const facts = collectGuardFacts({ enabled: true, serverPid: undefined })
+    const facts = collectGuardFacts(undefined)
 
-    expect(facts.enabled).toBe(true)
     expect(facts.serverPid).toBeUndefined()
     expect(facts.platform).toBe(process.platform)
     expect(facts.pid).toBe(process.pid)
@@ -139,7 +122,7 @@ describe("collectGuardFacts", () => {
     const argv = Object.getOwnPropertyDescriptor(process, "argv")
     Object.defineProperty(process, "argv", { configurable: true, get: () => { throw new Error("unreadable") } })
     try {
-      const facts = collectGuardFacts({ enabled: true, serverPid: 1 })
+      const facts = collectGuardFacts(1)
       expect(facts.args).toEqual(["--standalone"])
       expect(checkGuards({ ...facts, platform: "linux", hasExecve: true, isMainThread: true })).toEqual({
         ok: false,
@@ -153,7 +136,7 @@ describe("collectGuardFacts", () => {
 
 describe("on Windows", () => {
   it.skipIf(process.platform !== "win32")("turns the plugin off without throwing", () => {
-    expect(checkGuards(collectGuardFacts({ enabled: true, serverPid: 1 }))).toEqual({
+    expect(checkGuards(collectGuardFacts(1))).toEqual({
       ok: false,
       reason: "Windows is not supported",
     })

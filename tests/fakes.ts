@@ -74,7 +74,6 @@ export const safeFacts: GuardFacts = {
   stdinIsTTY: true,
   stdoutIsTTY: true,
   shExecutable: true,
-  enabled: true,
 }
 
 export type ExecCall = { file: string; argv: string[]; env: NodeJS.ProcessEnv }
@@ -108,7 +107,7 @@ export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardF
       if (state.atimeError) throw state.atimeError
       return atime
     },
-    guardFacts: input => ({ ...safeFacts, ...input, args: proc.args, ...overrides.facts }),
+    guardFacts: serverPid => ({ ...safeFacts, serverPid, args: proc.args, ...overrides.facts }),
     execve(file, argv, env) {
       execs.push({ file, argv, env })
       if (state.execveError) throw state.execveError

@@ -31,7 +31,7 @@ export interface NapProcess {
   start: StartDirectory
   stdin: unknown
   readAtime(): number | undefined
-  guardFacts(input: { enabled: boolean; serverPid: number | undefined }): GuardFacts
+  guardFacts(serverPid: number | undefined): GuardFacts
   execve: Execve
 }
 
@@ -178,7 +178,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     }
     if (state !== "starting") return
 
-    const guard = checkGuards(proc.guardFacts({ enabled: true, serverPid }))
+    const guard = checkGuards(proc.guardFacts(serverPid))
     if (!guard.ok) {
       off("refused", { reason: guard.reason })
       return
