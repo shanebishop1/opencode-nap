@@ -36,6 +36,18 @@ const rendererOf = (context: unknown): unknown => {
   }
 }
 
+/** Restores the draft of the nap that started this TUI, whatever the options say now: it is the user's text. */
+function restoreHandedOverDraft(context: unknown, proc: NapProcess, log: Log): () => void {
+  try {
+    const text = proc.drafts.take()
+    if (text === undefined) return () => {}
+    return restoreDraft({ text, renderer: rendererOf(context), now: proc.now, setTimer: proc.setTimer, clearTimer: proc.clearTimer, log })
+  } catch (error) {
+    log.once("draft not restored", { reason: describe(error) })
+    return () => {}
+  }
+}
+
 /**
  * Runs the plugin for one TUI and returns its cleanup. Every way of turning
  * off writes one log line and leaves the TUI as it was.
@@ -63,29 +75,12 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     log.once(message, detail)
     release()
   }
-  let stopRestore = () => {}
+  // First, so the hand-over variable is gone however the plugin turns out.
+  const stopRestore = restoreHandedOverDraft(context, proc, log)
   const cleanup = () => {
     state = "off"
     stopRestore()
     release()
-  }
-
-  // Taken first, so the hand-over variable is gone however the plugin turns
-  // out, and restored whatever the options say now: it is the user's text.
-  try {
-    const text = proc.drafts.take()
-    if (text !== undefined) {
-      stopRestore = restoreDraft({
-        text,
-        renderer: rendererOf(context),
-        now: proc.now,
-        setTimer: proc.setTimer,
-        clearTimer: proc.clearTimer,
-        log,
-      })
-    }
-  } catch (error) {
-    log.once("draft not restored", { reason: describe(error) })
   }
 
   const parsed = parseOptions(rawOptions)
