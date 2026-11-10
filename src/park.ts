@@ -85,7 +85,7 @@ export interface ParkInput {
   pending: PendingWrites
   /** Runs last before the exec; returns extra environment for the woken TUI. */
   beforeNap?: () => Promise<Record<string, string> | undefined> | Record<string, string> | undefined
-  /** Checked after every wait; false when input arrived meanwhile. */
+  /** Checked after every wait; false when input arrived or the nap was deferred meanwhile. */
   stillDue: () => boolean
   /** Called just before the exec. */
   onExec?: () => void
@@ -105,7 +105,7 @@ export async function park(input: ParkInput): Promise<ParkResult> {
   const title = route.type === "session" ? input.title(route.sessionID) : undefined
   const extraEnv = await input.beforeNap?.()
   await input.pending.settled()
-  if (!input.stillDue()) return { status: "skipped", reason: "input arrived while preparing to nap" }
+  if (!input.stillDue()) return { status: "skipped", reason: "no longer due after waiting" }
 
   const stub = buildStubExec({
     cardTitle: typeof title === "string" ? title : undefined,

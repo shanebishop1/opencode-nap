@@ -107,7 +107,7 @@ describe("park", () => {
     expect(parkInput.calls).toHaveLength(0)
     due = false
     finish()
-    expect(await result).toEqual({ status: "skipped", reason: "input arrived while preparing to nap" })
+    expect(await result).toEqual({ status: "skipped", reason: "no longer due after waiting" })
     expect(parkInput.calls).toHaveLength(0)
   })
 

@@ -44,6 +44,8 @@ export interface NapHooks {
 // How soon to try again after a nap was skipped at nap time.
 const SKIP_RETRY_MS = 5_000
 
+const TERMINAL_HANDED_OFF = "the terminal is handed to another program"
+
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
@@ -106,7 +108,9 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
 
   const decideNow = () => {
     if (!idle || !focus) throw new Error("sources are not running")
-    return decide({ now: proc.now(), lastInputAt: idle.lastInputAt(), ...focus.state(), deferReasons: [] }, options)
+    // While suspended, another program (an external editor) owns the terminal.
+    const deferReasons = host.renderer.controlState === "explicit_suspended" ? [TERMINAL_HANDED_OFF] : []
+    return decide({ now: proc.now(), lastInputAt: idle.lastInputAt(), ...focus.state(), deferReasons }, options)
   }
 
   const schedule = (ms: number) => {
@@ -155,8 +159,12 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
       off("off: runtime error", { error: describe(error) })
       return
     }
-    if (decision.action === "wait") schedule(decision.checkAfterMs)
-    else void nap(decision.rule)
+    if (decision.action === "nap") {
+      void nap(decision.rule)
+      return
+    }
+    for (const reason of decision.deferred) log.once(`nap deferred: ${reason}`)
+    schedule(decision.checkAfterMs)
   }
 
   void (async () => {

@@ -17,6 +17,7 @@ describe("probe", () => {
       ["data.session.get", context => { delete context.data.session }],
       ["renderer.on/off", context => { context.renderer.on = undefined }],
       ["renderer.keyInput.on/off", context => { context.renderer.keyInput = { on() {} } }],
+      ["renderer.controlState", context => { delete context.renderer.controlState }],
       ["renderer.stdin", context => { context.renderer.stdin = new FakeEmitter() }],
     ]
     for (const [name, remove] of cases) {

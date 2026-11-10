@@ -144,9 +144,31 @@ describe("startNap", () => {
     finish()
     await fake.advance(0)
     expect(fake.execs).toHaveLength(0)
-    expect(messages(log)).toEqual(["watching", "nap skipped: input arrived while preparing to nap"])
+    expect(messages(log)).toEqual(["watching", "nap skipped: no longer due after waiting"])
     await fake.advance(IDLE_MS + 5_000)
     expect(fake.execs).toHaveLength(1)
+  })
+
+  it("never naps while the renderer is suspended for an external editor, and naps once it resumes", async () => {
+    const { fake, context, log } = await start()
+    context.renderer.controlState = "explicit_suspended"
+    await fake.advance(10 * IDLE_MS)
+    expect(fake.execs).toHaveLength(0)
+    expect(messages(log)).toEqual(["watching", "nap deferred: the terminal is handed to another program"])
+    context.renderer.controlState = "auto_started"
+    await fake.advance(5_000)
+    expect(fake.execs).toHaveLength(1)
+  })
+
+  it("does not exec when the renderer is suspended during the wait for writes", async () => {
+    let finish = () => {}
+    const write = new Promise<void>(done => { finish = done })
+    const { fake, context } = await start({ hooks: { pending: { track: value => value, settled: () => write } } })
+    await fake.advance(IDLE_MS + 5_000)
+    context.renderer.controlState = "explicit_suspended"
+    finish()
+    await fake.advance(0)
+    expect(fake.execs).toHaveLength(0)
   })
 
   describe("ac-refuse: logs the reason once and never naps", () => {
@@ -203,6 +225,7 @@ describe("startNap", () => {
       ["data.session.get", context => { context.data.session.get = "nope" }],
       ["renderer.on/off", context => { context.renderer.off = undefined }],
       ["renderer.keyInput.on/off", context => { delete context.renderer.keyInput }],
+      ["renderer.controlState", context => { context.renderer.controlState = undefined }],
       ["renderer.stdin", context => { context.renderer.stdin = {} }],
     ]
     for (const [name, remove] of removals) {

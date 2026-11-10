@@ -10,7 +10,7 @@ export interface NapHost {
   ui: { router: { current(): unknown } }
   client: { server: { info(): Promise<unknown> } }
   data: { session: { get(sessionID: string): { title?: unknown } | undefined } }
-  renderer: Emitter & { keyInput: Emitter; stdin: unknown }
+  renderer: Emitter & { keyInput: Emitter; stdin: unknown; controlState: unknown }
 }
 
 export type ProbeResult = { ok: true; host: NapHost; stdin: Emitter } | { ok: false; missing: string }
@@ -39,6 +39,8 @@ const checks: Array<[name: string, check: (context: unknown, stdin: unknown) => 
   ["data.session.get", context => isFunction(read(context, "data.session.get"))],
   ["renderer.on/off", context => isEmitter(read(context, "renderer"))],
   ["renderer.keyInput.on/off", context => isEmitter(read(context, "renderer.keyInput"))],
+  // "explicit_suspended" while the terminal is handed to an external editor or the job is stopped.
+  ["renderer.controlState", context => typeof read(context, "renderer.controlState") === "string"],
   // Mouse input is only seen on the raw stream, so it must be the one the renderer reads.
   ["renderer.stdin", (context, stdin) => isEmitter(stdin) && read(context, "renderer.stdin") === stdin],
 ]

@@ -50,7 +50,7 @@ export const SERVER_URL = "http://127.0.0.1:4096"
 
 /** A TUI context with every internal the plugin uses. */
 export function fakeContext(stdin: FakeEmitter) {
-  const renderer = Object.assign(new FakeEmitter(), { keyInput: new FakeEmitter(), stdin })
+  const renderer = Object.assign(new FakeEmitter(), { keyInput: new FakeEmitter(), stdin, controlState: "auto_started" as unknown })
   const context = {
     options: {},
     route: { type: "session", sessionID: SESSION_ID } as unknown,
