@@ -10,35 +10,51 @@ export interface PolicyInput {
   deferReasons: string[]
 }
 
+type RuleName = "idle" | "blurIdle" | "blur"
+
 export type Decision =
-  | { action: "nap"; rule: "idle" }
+  | { action: "nap"; rule: RuleName }
   | { action: "wait"; checkAfterMs: number; deferred: string[] }
 
 type RuleOptions = Pick<NapOptions, "idleMinutes" | "napOnBlur" | "blurIdleMinutes">
 
 interface RuleCheck {
-  rule: "idle"
+  rule: RuleName
   due: boolean
   dueInMs: number
 }
 
-type Rule = (input: PolicyInput, options: RuleOptions) => RuleCheck
+// A rule that does not apply to the current focus or options returns undefined.
+type Rule = (input: PolicyInput, options: RuleOptions) => RuleCheck | undefined
 
 const MINUTE_MS = 60_000
-const MIN_CHECK_MS = 1_000
+const BLUR_DEBOUNCE_MS = 2_000
+const MIN_CHECK_MS = 250
 const MAX_CHECK_MS = 5_000
 const DEFERRED_CHECK_MS = 5_000
 
-const idleRule: Rule = (input, options) => {
-  const idleMs = Math.max(0, input.now - input.lastInputAt)
-  const thresholdMs = options.idleMinutes * MINUTE_MS
-  return { rule: "idle", due: idleMs >= thresholdMs, dueInMs: Math.max(0, thresholdMs - idleMs) }
+const after = (rule: RuleName, elapsedMs: number, thresholdMs: number): RuleCheck =>
+  ({ rule, due: elapsedMs >= thresholdMs, dueInMs: Math.max(0, thresholdMs - elapsedMs) })
+
+const idleMs = (input: PolicyInput): number => Math.max(0, input.now - input.lastInputAt)
+
+const idleRule: Rule = (input, options) => after("idle", idleMs(input), options.idleMinutes * MINUTE_MS)
+
+const blurIdleRule: Rule = (input, options) => {
+  if (options.blurIdleMinutes === undefined || input.focus !== "unfocused") return undefined
+  return after("blurIdle", idleMs(input), options.blurIdleMinutes * MINUTE_MS)
 }
 
-const rules: Rule[] = [idleRule]
+const blurRule: Rule = (input, options) => {
+  if (!options.napOnBlur || input.focus !== "unfocused" || input.unfocusedSince === undefined) return undefined
+  return after("blur", input.now - input.unfocusedSince, BLUR_DEBOUNCE_MS)
+}
+
+// Order is precedence: when several rules are due, the first one listed is reported.
+const rules: Rule[] = [idleRule, blurIdleRule, blurRule]
 
 export function decide(input: PolicyInput, options: RuleOptions): Decision {
-  const checks = rules.map(rule => rule(input, options))
+  const checks = rules.flatMap(rule => rule(input, options) ?? [])
   const due = checks.find(check => check.due)
 
   if (due) {

@@ -22,6 +22,14 @@ describe("createFocusSource", () => {
     expect(focus.state()).toEqual({ focus: "unfocused", unfocusedSince: 9_000 })
   })
 
+  it("calls onChange after a change but not for a repeated event", () => {
+    const renderer = new FakeEmitter()
+    const seen: string[] = []
+    const focus = createFocusSource({ renderer, now: () => 0, onChange: () => seen.push(focus.state().focus) })
+    for (const event of ["blur", "blur", "focus", "focus", "blur"]) renderer.emit(event)
+    expect(seen).toEqual(["unfocused", "focused", "unfocused"])
+  })
+
   it("starts focused on a focus event and dispose removes its listeners", () => {
     const renderer = new FakeEmitter()
     const focus = createFocusSource({ renderer, now: () => 0 })

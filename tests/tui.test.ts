@@ -133,17 +133,22 @@ describe("startNap", () => {
   })
 
   it("ac-focus-not-input: focus reports and the access-time bump they cause do not restart the idle time", async () => {
-    const { fake, context } = await start()
-    const startedAt = fake.now()
-    await fake.advance(IDLE_MS - 10_000)
-    for (const report of ["\x1b[O", "\x1b[I"]) {
-      fake.stdin.emit("data", Buffer.from(report))
-      context.renderer.emit(report === "\x1b[O" ? "blur" : "focus")
-      fake.setAtime(Math.floor(fake.now() / 1_000) * 1_000)
-      await fake.advance(2_000)
+    // With and without a focus option that leaves the plain idle rule in charge.
+    for (const setup of [{}, { options: { ...options, blurIdleMinutes: 5 } }]) {
+      const { fake, context } = await start(setup)
+      const startedAt = fake.now()
+      await fake.advance(IDLE_MS - 10_000)
+      for (const report of ["\x1b[O", "\x1b[I"]) {
+        // In OpenCode's order: the read bumps the access time, then the
+        // renderer, which listened first, sees the chunk before the plugin.
+        fake.setAtime(Math.floor(fake.now() / 1_000) * 1_000)
+        context.renderer.emit(report === "\x1b[O" ? "blur" : "focus")
+        fake.stdin.emit("data", Buffer.from(report))
+        await fake.advance(2_000)
+      }
+      await fake.advance(IDLE_MS - (fake.now() - startedAt) + 5_000)
+      expect(fake.execs).toHaveLength(1)
     }
-    await fake.advance(IDLE_MS - (fake.now() - startedAt) + 5_000)
-    expect(fake.execs).toHaveLength(1)
   })
 
   it("counts an access-time bump the renderer did not see, such as typing into an external editor", async () => {
@@ -199,6 +204,86 @@ describe("startNap", () => {
     await fake.advance(10 * IDLE_MS)
     expect(fake.execs).toHaveLength(0)
     expect(fake.timers.size).toBe(0)
+  })
+
+  describe("focus rules", () => {
+    const napRule = (log: ReturnType<typeof fakeLog>) => log.entries.find(entry => entry.message === "napping")?.detail.rule
+
+    it("ac-nap-on-blur: naps 2 seconds after the window loses focus, without waiting for the next check", async () => {
+      const { fake, context, log } = await start({ options: { ...options, napOnBlur: true } })
+      // Mid-way through a five-second check interval.
+      await fake.advance(11_000)
+      context.renderer.emit("blur")
+      await fake.advance(1_999)
+      expect(fake.execs).toHaveLength(0)
+      await fake.advance(1)
+      expect(fake.execs).toHaveLength(1)
+      expect(napRule(log)).toBe("blur")
+    })
+
+    it("ac-blur-debounce: regaining focus within 2 seconds does not nap", async () => {
+      const { fake, context, log } = await start({ options: { ...options, napOnBlur: true } })
+      await fake.advance(10_000)
+      context.renderer.emit("blur")
+      await fake.advance(1_500)
+      context.renderer.emit("focus")
+      await fake.advance(IDLE_MS - 12_000)
+      expect(fake.execs).toHaveLength(0)
+      await fake.advance(5_000)
+      expect(napRule(log)).toBe("idle")
+    })
+
+    it("ac-blur-debounce: regaining focus while waiting for writes stops the nap", async () => {
+      const { finish, pending } = heldWrite()
+      const { fake, context, log } = await start({ options: { ...options, napOnBlur: true }, hooks: { pending } })
+      context.renderer.emit("blur")
+      await fake.advance(2_000)
+      context.renderer.emit("focus")
+      finish()
+      await fake.advance(0)
+      expect(fake.execs).toHaveLength(0)
+      expect(messages(log)).toEqual(["watching", "nap skipped: no longer due after waiting"])
+    })
+
+    it("ac-blur-idle: naps an unfocused window after blurIdleMinutes, before idleMinutes", async () => {
+      const { fake, context, log } = await start({ options: { idleMinutes: 10, blurIdleMinutes: 1 } })
+      context.renderer.emit("blur")
+      await fake.advance(IDLE_MS - 1_000)
+      expect(fake.execs).toHaveLength(0)
+      await fake.advance(6_000)
+      expect(fake.execs).toHaveLength(1)
+      expect(napRule(log)).toBe("blurIdle")
+    })
+
+    it("ac-blur-idle: losing focus after blurIdleMinutes of idle naps at once", async () => {
+      const { fake, context, log } = await start({ options: { idleMinutes: 10, blurIdleMinutes: 1 } })
+      context.renderer.emit("focus")
+      await fake.advance(2 * IDLE_MS)
+      expect(fake.execs).toHaveLength(0)
+      context.renderer.emit("blur")
+      await fake.advance(0)
+      expect(fake.execs).toHaveLength(1)
+      expect(napRule(log)).toBe("blurIdle")
+    })
+
+    it("ac-focus-unknown: with no focus event, only idleMinutes naps", async () => {
+      const { fake, log } = await start({ options: { idleMinutes: 1, napOnBlur: true, blurIdleMinutes: 0.1 } })
+      await fake.advance(IDLE_MS - 1_000)
+      expect(fake.execs).toHaveLength(0)
+      await fake.advance(6_000)
+      expect(fake.execs).toHaveLength(1)
+      expect(napRule(log)).toBe("idle")
+    })
+
+    it("ac-focus-defaults: with neither option set, losing focus changes nothing", async () => {
+      const { fake, context, log } = await start({ options: { idleMinutes: 1 } })
+      context.renderer.emit("blur")
+      await fake.advance(IDLE_MS - 1_000)
+      expect(fake.execs).toHaveLength(0)
+      await fake.advance(6_000)
+      expect(fake.execs).toHaveLength(1)
+      expect(napRule(log)).toBe("idle")
+    })
   })
 
   describe("ac-refuse: logs the reason once and never naps", () => {
