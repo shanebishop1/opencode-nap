@@ -143,4 +143,14 @@ describe("buildWakeArgs", () => {
     expect(reasonOf([], session(""))).toContain("session id")
     expect(reasonOf([], session("-x"))).toContain("-x")
   })
+
+  it("passes only the directory argument through resolveDirectory", () => {
+    const resolve = (arg: string) => `/abs/${arg}`
+    const result = buildWakeArgs(["--server", "http://127.0.0.1:1", "project", "--log-level", "INFO"], session("ses_a"), resolve)
+    expect(result).toEqual({
+      ok: true,
+      args: ["--server", "http://127.0.0.1:1", "/abs/project", "--log-level", "INFO", "-s", "ses_a"],
+    })
+    expect(buildWakeArgs(["-s", "ses_old", "--prompt", "hi"], home, resolve)).toEqual({ ok: true, args: [] })
+  })
 })

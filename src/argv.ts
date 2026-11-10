@@ -34,7 +34,15 @@ const SUBCOMMANDS = new Set([
 
 const refuse = (reason: string): WakeArgs => ({ ok: false, reason })
 
-export function buildWakeArgs(args: string[], route: Route): WakeArgs {
+/**
+ * `resolveDirectory` maps the directory argument to the value the wake
+ * passes; by default it is kept as given.
+ */
+export function buildWakeArgs(
+  args: string[],
+  route: Route,
+  resolveDirectory: (arg: string) => string = arg => arg,
+): WakeArgs {
   const kept: string[] = []
   let positionals = 0
 
@@ -46,7 +54,7 @@ export function buildWakeArgs(args: string[], route: Route): WakeArgs {
       if (SUBCOMMANDS.has(arg)) return refuse(`subcommand "${arg}" is not allowed`)
       positionals += 1
       if (positionals > 1) return refuse(`extra argument "${arg}"`)
-      kept.push(arg)
+      kept.push(resolveDirectory(arg))
       continue
     }
 
