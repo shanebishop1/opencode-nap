@@ -25,7 +25,7 @@ Restart the OpenCode TUI after each config change. Plugin options are read when 
 
    The installed package is at `$HOME/nap-check/node_modules/opencode-nap`.
 
-3. Back up your TUI plugin config, then point it at the installed package with a short idle time and a debug log:
+3. Back up your TUI plugin config, then point it at the installed package with a short idle time and a debug log. If `cli.json` does not exist yet, skip the backup.
 
    ```sh
    cp ~/.config/opencode/cli.json ~/.config/opencode/cli.json.bak
@@ -53,13 +53,13 @@ Restart the OpenCode TUI after each config change. Plugin options are read when 
 
 4. **Load.** Start `opencode` and open a session.
    - Expect: the TUI starts and shows the session.
-   - Expect: `nap.log` exists and records that the plugin loaded.
+   - Expect: `nap.log` exists. It has one JSON line per event. A line with `"message":"loaded"` shows the plugin loaded, and a line with `"message":"watching"` shows it is ready to nap.
    - Result:
 
 5. **Nap and memory.** Find the TUI's process ID, for example with `ps -axo pid,rss,command | grep '[o]pencode'`. Record its memory with `ps -o rss= -p <pid>`. Do not touch the window for about 30 seconds.
-   - Expect: the window clears and shows a card with the session title and how to wake it.
+   - Expect: the window clears and shows the session title and `Napping to save memory. Press any key or click to wake.`
    - Expect: the process ID is the same as before the nap.
-   - Expect: awake, the RSS is around 150 MB. Napped, the RSS is a few MB. `ps` reports KB.
+   - Expect: napped, the RSS is a few MB, far below the awake value. On Linux it drops from about 150 MB to about 2 MB. `ps` reports KB.
    - Expect: `pgrep -P <pid>` lists one child, the `dd` process. Its `ps -o rss=` value is small.
    - Result (record both RSS values):
 
@@ -81,19 +81,20 @@ Restart the OpenCode TUI after each config change. Plugin options are read when 
 9. **Nap on blur.** Set `"napOnBlur": true` and `"idleMinutes": 15`. Restart the TUI. Click another application, such as Finder, and stay there.
    - Expect: the window naps about 2 seconds after you leave it.
    - Expect: back in the window, it stays napped. Focus does not wake it. Wake it with a key.
+   - If the window never naps, the terminal may not report focus. Record that as the result.
    - Result:
 
 10. **Quick switch does not nap.** Switch to another application and back within about 1 second.
     - Expect: the window does not nap.
     - Result:
 
-11. **Mid-run nap.** Set `"napOnBlur": false` and `"idleMinutes": 0.25` again. Restart the TUI. Ask for a long answer, such as an essay of several thousand words. Do not touch the window while it streams.
+11. **Mid-run nap.** This step and the next need a working model provider. Set `"napOnBlur": false` and `"idleMinutes": 0.25` again. Restart the TUI. Ask for a long answer, such as an essay of several thousand words. Do not touch the window while it streams.
     - Expect: the window naps while the reply is still streaming.
     - Wait about a minute, then wake with a key.
     - Expect: the reply is complete, with no truncation or error.
     - Result:
 
-12. **Permission prompt after wake.** In your OpenCode config, set a tool that you can trigger to `ask` in `agents.<agent>.permissions`. Restart the TUI. Start a request that uses that tool, and leave the permission prompt unanswered.
+12. **Permission prompt after wake.** In your OpenCode config, add `{ "action": "shell", "resource": "*", "effect": "ask" }` to `agents.build.permissions`. Restart the TUI. Ask for a shell command to be run, and leave the permission prompt unanswered.
     - Expect: the prompt is pending.
     - Wait for the nap, then wake with a key.
     - Expect: the permission prompt is shown again within about 2 seconds, and the key did not answer it.
@@ -103,21 +104,21 @@ Restart the OpenCode TUI after each config change. Plugin options are read when 
 13. **Background service.** Start `opencode` with no `--server` flag. Repeat steps 5 and 6.
     - Result:
 
-14. **Named server.** Start a server with `opencode serve` and note the URL it prints. Start `opencode --server <url>`. Repeat steps 5 and 6.
+14. **Named server.** Start a server with `opencode serve`. It prints `server listening on http://…`; note that URL. Start `opencode --server <url>`. Repeat steps 5 and 6.
     - Result:
 
 15. **Log.** Open `nap.log` and search it for text you typed in step 8.
     - Expect: no line contains the draft text.
     - Result:
 
-16. **Clean up.** Restore your config from the backup:
+16. **Clean up.** Restore your config from the backup, or delete `cli.json` if there was none, then remove the scratch directory:
 
     ```sh
     mv ~/.config/opencode/cli.json.bak ~/.config/opencode/cli.json
     rm -rf "$HOME/nap-check"
     ```
 
-    Stop any server you started in step 14.
+    Undo the permission rule from step 12. Stop any server you started in step 14.
     - Result:
 
 17. **Record the terminals.** List the terminals you checked, with their versions, in the "Platforms" section of the README. Replace the line that says none yet.
