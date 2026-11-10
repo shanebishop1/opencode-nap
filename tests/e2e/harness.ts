@@ -1,11 +1,13 @@
 import { rmSync } from "fs"
-import { mkdir, mkdtemp, rm, writeFile } from "fs/promises"
+import { cp, mkdir, mkdtemp, rm, writeFile } from "fs/promises"
 import { randomBytes } from "crypto"
 import { tmpdir } from "os"
 import { join, resolve } from "path"
 import { $ } from "bun"
+import { descendants, listProcesses } from "./processes.js"
 import { killGroup, startPty, type PtyProcess } from "./pty.js"
 
+export const e2eEnabled = process.env.NAP_E2E === "1"
 export const cliVersion = process.env.NAP_E2E_CLI_VERSION ?? "2.2.4"
 const repositoryRoot = resolve(import.meta.dir, "..", "..")
 
@@ -17,14 +19,13 @@ const repositoryRoot = resolve(import.meta.dir, "..", "..")
 export type Scratch = {
   root: string
   project: string
-  home: string
-  configHome: string
   env: Record<string, string>
   password: string
   binary: string
 }
 
 const tracked = new Set<PtyProcess>()
+const tuis = new Set<PtyProcess>()
 const scratchRoots = new Set<string>()
 
 const forceCleanup = () => {
@@ -108,31 +109,30 @@ export async function createScratch(): Promise<Scratch> {
   await $`npm install --no-audit --no-fund ${join(root, archive)} ${`@opencode/cli@${cliVersion}`}`
     .cwd(project)
     .quiet()
+  const scratch = { root, project, env, password, binary: join(project, "node_modules", ".bin", "opencode") }
   // Providers are denied outright, so nothing can reach a hosted model.
-  await writeFile(env.OPENCODE_CONFIG, JSON.stringify({ $schema: "https://opencode.ai/config.json", enabled_providers: [] }, null, 2))
-
-  return {
-    root,
-    project,
-    home,
-    configHome: env.XDG_CONFIG_HOME,
-    env,
-    password,
-    binary: join(project, "node_modules", ".bin", "opencode"),
-  }
+  await writeServerConfig(scratch, { enabled_providers: [] })
+  return scratch
 }
 
 /** Writes the TUI plugin config, `$XDG_CONFIG_HOME/opencode/cli.json`. */
 export async function writeCliConfig(scratch: Scratch, plugins: unknown[]): Promise<void> {
-  const directory = join(scratch.configHome, "opencode")
+  const directory = join(scratch.env.XDG_CONFIG_HOME, "opencode")
   await mkdir(directory, { recursive: true })
   await writeFile(join(directory, "cli.json"), JSON.stringify({ $schema: "https://opencode.ai/v2/cli.json", plugins }, null, 2))
 }
 
 export const installedPackage = (scratch: Scratch): string => join(scratch.project, "node_modules", "opencode-nap")
 
-const run = async (scratch: Scratch, name: string, command: string[]): Promise<PtyProcess> => {
-  const pty = await startPty({ command, env: scratch.env, cwd: scratch.project, outputFile: join(scratch.root, `${name}.out`) })
+export type RunOptions = { cwd?: string; env?: Record<string, string> }
+
+const run = async (scratch: Scratch, name: string, command: string[], options: RunOptions = {}): Promise<PtyProcess> => {
+  const pty = await startPty({
+    command,
+    env: options.env ?? scratch.env,
+    cwd: options.cwd ?? scratch.project,
+    outputFile: join(scratch.root, `${name}.out`),
+  })
   tracked.add(pty)
   return pty
 }
@@ -144,52 +144,77 @@ export async function startServer(scratch: Scratch): Promise<{ process: PtyProce
   return { process: server, url }
 }
 
-export const apiHeaders = (scratch: Scratch): Record<string, string> => ({
-  authorization: `Basic ${Buffer.from(`opencode:${scratch.password}`).toString("base64")}`,
-  "content-type": "application/json",
-  "x-opencode-directory": scratch.project,
-})
-
 export async function createSession(scratch: Scratch, url: string): Promise<string> {
-  const response = await fetch(`${url}/api/session`, {
-    method: "POST",
-    headers: apiHeaders(scratch),
-    body: "{}",
-    signal: AbortSignal.timeout(10_000),
-  })
-  const body = await response.text()
-  if (!response.ok) throw new Error(`creating a session failed: HTTP ${response.status}: ${body}`)
-  const id = (JSON.parse(body) as { data?: { id?: unknown } }).data?.id
-  if (typeof id !== "string") throw new Error(`unexpected session response: ${body}`)
+  const created = await callApi(scratch, url, "POST", "/api/session", {})
+  const id = created?.data?.id
+  if (typeof id !== "string") throw new Error(`unexpected session response: ${JSON.stringify(created)}`)
   return id
 }
 
 /** Runs the TUI against the private server. It never receives input. */
 export const startTui = (scratch: Scratch, url: string, sessionID: string): Promise<PtyProcess> =>
-  run(scratch, "tui", [scratch.binary, "--server", url, "-s", sessionID, scratch.project])
+  startTuiWith(scratch, "tui", ["--server", url, "-s", sessionID, scratch.project])
 
-type ProcessInfo = { pid: number; ppid: number; args: string }
+/**
+ * Runs the TUI with the given arguments under its own output file. The
+ * arguments must name the private server with --server: only a test that has
+ * proved it runs in a private network namespace may leave it out.
+ */
+export async function startTuiWith(scratch: Scratch, name: string, args: string[], options: RunOptions = {}): Promise<PtyProcess> {
+  const tui = await run(scratch, name, [scratch.binary, ...args], options)
+  tuis.add(tui)
+  return tui
+}
 
-const listProcesses = async (): Promise<ProcessInfo[]> =>
-  (await $`ps -A -o pid=,ppid=,args=`.quiet().text())
-    .split("\n")
-    .map(line => line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
-    .filter((match): match is RegExpMatchArray => match !== null)
-    .map(match => ({ pid: Number(match[1]), ppid: Number(match[2]), args: match[3] }))
+/** Stops every TUI started so far. A TUI left running would hot-reload the next test's cli.json. */
+export async function stopTuis(): Promise<void> {
+  const running = [...tuis]
+  tuis.clear()
+  await Promise.all(running.map(tui => tui.stop()))
+}
 
-const descendants = (processes: ProcessInfo[], roots: number[]): Set<number> => {
-  const found = new Set(roots)
-  let grew = true
-  while (grew) {
-    grew = false
-    for (const info of processes) {
-      if (found.has(info.ppid) && !found.has(info.pid)) {
-        found.add(info.pid)
-        grew = true
-      }
-    }
-  }
-  return found
+/** Runs any command under the harness, so cleanup stops it with the rest. */
+export const startCommand = (scratch: Scratch, name: string, command: string[], options: RunOptions = {}): Promise<PtyProcess> =>
+  run(scratch, name, command, options)
+
+/** Replaces the server config. The server reads it when it starts. */
+export async function writeServerConfig(scratch: Scratch, config: Record<string, unknown>): Promise<void> {
+  await writeFile(scratch.env.OPENCODE_CONFIG, JSON.stringify({ $schema: "https://opencode.ai/config.json", ...config }, null, 2))
+}
+
+/** Calls the private server's API and returns the parsed JSON body. Throws on an HTTP error. */
+export async function callApi(scratch: Scratch, url: string, method: string, path: string, body?: unknown): Promise<any> {
+  const response = await fetch(`${url}${path}`, {
+    method,
+    headers: {
+      authorization: `Basic ${Buffer.from(`opencode:${scratch.password}`).toString("base64")}`,
+      "content-type": "application/json",
+      "x-opencode-directory": scratch.project,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  })
+  const text = await response.text()
+  if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}: ${text.slice(0, 2000)}`)
+  return text ? JSON.parse(text) : undefined
+}
+
+const fixtures = resolve(import.meta.dir, "..", "fixtures")
+
+/** Copies the observer plugin into the scratch directory and returns its path for cli.json. */
+export async function installObserver(scratch: Scratch): Promise<string> {
+  const directory = join(scratch.root, "observer-plugin")
+  await cp(join(fixtures, "observer-plugin"), directory, { recursive: true })
+  return directory
+}
+
+/** Starts the fake OpenAI-compatible provider on a free loopback port and returns its URL. */
+export async function startProvider(scratch: Scratch, logFile: string, slow: { chunks: number; delayMs: number }): Promise<{ process: PtyProcess; url: string }> {
+  const provider = await run(scratch, "provider", [
+    process.execPath, join(fixtures, "local-openai-server.ts"), logFile, String(slow.chunks), String(slow.delayMs),
+  ])
+  const [, url] = await provider.waitFor(/READY (http:\/\/127\.0\.0\.1:\d+)/, 30_000)
+  return { process: provider, url }
 }
 
 const alive = (pid: number): boolean => {
@@ -202,11 +227,11 @@ const alive = (pid: number): boolean => {
 }
 
 /**
- * Stops every process this harness started, with their descendants, removes
- * the scratch directories, and returns any process that survived (after
- * killing it), so the caller can fail loudly.
+ * Stops every process this harness started, with their descendants, and
+ * removes the scratch directories. Throws, after killing them, when any
+ * process survived.
  */
-export async function cleanup(): Promise<string[]> {
+export async function cleanup(): Promise<void> {
   const before = await listProcesses()
   const started = [...tracked].flatMap(pty => [pty.driverPid, pty.pid])
   const family = descendants(before, started)
@@ -226,5 +251,8 @@ export async function cleanup(): Promise<string[]> {
   }
   await Promise.all(roots.map(root => rm(root, { recursive: true, force: true })))
   scratchRoots.clear()
-  return survivors.map(info => `${info.pid} ${info.args}`)
+  tuis.clear()
+  if (survivors.length) {
+    throw new Error(`processes outlived the test and were killed:\n${survivors.map(info => `${info.pid} ${info.args}`).join("\n")}`)
+  }
 }

@@ -34,6 +34,23 @@ describe("tui plugin", () => {
     expect(JSON.parse(line)).toMatchObject({ message: "loaded", detail: { options: { enabled: true, debugLogFile } } })
   })
 
+  it("still logs, from the raw options, when the options are invalid", async () => {
+    const debugLogFile = join(directory, "nap.log")
+    setup({ idleMinutes: "soon", debugLogFile })
+
+    const lines = (await readFile(debugLogFile, "utf8")).trim().split("\n").map(line => JSON.parse(line))
+    expect(lines.map(line => line.message)).toEqual(["loaded", "off: invalid options"])
+    expect(lines[1].detail).toEqual({ message: 'invalid option "idleMinutes": must be a number greater than 0' })
+  })
+
+  it("turns off with one log line in a host without the internals it needs", async () => {
+    const debugLogFile = join(directory, "nap.log")
+    setup({ debugLogFile })
+
+    const lines = (await readFile(debugLogFile, "utf8")).trim().split("\n").map(line => JSON.parse(line))
+    expect(lines.slice(1)).toMatchObject([{ message: "off: missing OpenCode internal", detail: { name: "ui.router.current" } }])
+  })
+
   it("never writes to the terminal", () => {
     const spies = [
       spyOn(process.stdout, "write"),
