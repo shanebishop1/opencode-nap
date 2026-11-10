@@ -6,7 +6,7 @@ import { join } from "path"
 import { draftFiles, type DraftFiles } from "../src/draft.js"
 import { DRAFT_ENV } from "../src/draft-file.js"
 import { createLog, type Log } from "../src/log.js"
-import { startNap, type NapHooks } from "../src/tui.js"
+import { startNap } from "../src/tui.js"
 import { fakeContext, fakeEditor, fakeLog, fakeProcess, settle } from "./fakes.js"
 
 const IDLE_MS = 60_000
@@ -29,7 +29,6 @@ type Setup = {
   env?: NodeJS.ProcessEnv
   drafts?: DraftFiles
   log?: Log
-  hooks?: NapHooks
   edit?: (context: ReturnType<typeof fakeContext>) => void
   /** Runs once the plugin is watching. */
   after?: (context: ReturnType<typeof fakeContext>) => void
@@ -49,7 +48,7 @@ async function start(setup: Setup = {}) {
   const context = fakeContext(fake.stdin)
   setup.edit?.(context)
   const log = setup.log ?? fakeLog()
-  const cleanup = startNap(context, { idleMinutes: IDLE_MS / 60_000, ...setup.options }, log, fake.proc, setup.hooks)
+  const cleanup = startNap(context, { idleMinutes: IDLE_MS / 60_000, ...setup.options }, log, fake.proc)
   await settle()
   setup.after?.(context)
   return { fake, context, log, cleanup, env }
@@ -197,31 +196,26 @@ describe("draft carry-over", () => {
     expect(fake.execs).toHaveLength(1)
   })
 
-  let hooks: NapHooks = {}
-
   it("deletes the stored draft when input arrives before the exec, or the exec fails", async () => {
-    let typeOnce = true
-    let stored: string[] = []
+    const files = draftFiles({}, dir)
+    const saved: string[] = []
+    let typeKey = () => {}
     const { fake } = await start({
-      edit: context => { context.prompt.text = DRAFT },
-      // A key press just after the draft was stored.
-      after: context => {
-        hooks.beforeNap = () => {
-          stored = draftsOnDisk()
-          if (typeOnce) context.renderer.keyInput.emit("keypress", { name: "a" })
-          typeOnce = false
-          return undefined
-        }
+      // A key press just after the first draft was stored.
+      drafts: { ...files, save: text => { saved.push(files.save(text)); if (saved.length === 1) typeKey(); return saved.at(-1)! } },
+      edit: context => {
+        context.prompt.text = DRAFT
+        typeKey = () => context.renderer.keyInput.emit("keypress", { name: "a" })
       },
-      hooks: (hooks = {}),
     })
     await fake.advance(IDLE_MS + 5_000)
-    expect(stored).toHaveLength(1)
+    expect(saved).toHaveLength(1)
     expect(fake.execs).toHaveLength(0)
     expect(draftsOnDisk()).toEqual([])
 
     fake.state.execveError = new Error("EACCES")
     await fake.advance(IDLE_MS + 5_000)
+    expect(saved).toHaveLength(2)
     expect(fake.execs).toHaveLength(1)
     expect(draftsOnDisk()).toEqual([])
   })

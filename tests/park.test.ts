@@ -57,8 +57,8 @@ describe("park", () => {
     expect(parkInput.calls).toHaveLength(0)
   })
 
-  it("merges the environment from beforeNap after waiting for it", async () => {
-    const parkInput = input({ beforeNap: async () => ({ EXTRA: "yes" }) })
+  it("merges the environment from beforeNap", async () => {
+    const parkInput = input({ beforeNap: () => ({ EXTRA: "yes" }) })
     await park(parkInput)
     expect(parkInput.calls[0][2]).toEqual({ PATH: "/usr/bin", EXTRA: "yes" })
   })

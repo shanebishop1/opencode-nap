@@ -30,15 +30,13 @@ export interface ParkInput {
   title: (sessionID: string) => unknown
   pending: PendingWrites
   /** Runs once the storage writes have landed; returns extra environment for the woken TUI, or a deferral. */
-  beforeNap?: () => Promise<BeforeNapResult> | BeforeNapResult
+  beforeNap?: () => Record<string, string> | NapDeferral | undefined
   /** Checked after every wait; false when input arrived or the nap was deferred meanwhile. */
   stillDue: () => boolean
   /** Called just before the exec. */
   onExec?: () => void
   execve: Execve
 }
-
-export type BeforeNapResult = Record<string, string> | NapDeferral | undefined
 
 export type ParkResult =
   | { status: "skipped"; reason: string }
@@ -52,7 +50,7 @@ export async function park(input: ParkInput): Promise<ParkResult> {
 
   const title = route.type === "session" ? input.title(route.sessionID) : undefined
   if (!(await input.pending.settled())) return { status: "skipped", reason: "the plugin's storage writes took too long" }
-  const extraEnv = await input.beforeNap?.()
+  const extraEnv = input.beforeNap?.()
   if (extraEnv instanceof NapDeferral) return { status: "skipped", reason: extraEnv.reason }
   if (!input.stillDue()) return { status: "skipped", reason: "no longer due after waiting" }
 

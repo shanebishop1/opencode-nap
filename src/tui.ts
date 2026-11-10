@@ -2,20 +2,19 @@ import type { Plugin } from "@opencode/plugin/tui"
 import { buildWakeArgs } from "./argv.js"
 import { parseOptions } from "./config.js"
 import { directoryResolver } from "./directory.js"
-import { createDraftCarry, probeDraft, restoreDraft, type DraftCarry } from "./draft.js"
+import { createDraftCarry, probeDraft, restoreDraft } from "./draft.js"
 import { createFocusSource, type FocusSource } from "./focus.js"
 import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
 import { createLog, type Log } from "./log.js"
-import { NapDeferral, park, type ParkInput } from "./park.js"
+import { park } from "./park.js"
 import { createPendingWrites, type PendingWrites } from "./pending.js"
 import { decide } from "./policy.js"
 import { probe } from "./probe.js"
 import { realProcess, type NapProcess } from "./process.js"
 
-/** Seams for later features: extra work before the exec, after the draft is stored, and the plugin's own storage writes. */
+/** Seam for a later feature: the plugin's own storage writes. */
 export interface NapHooks {
-  beforeNap?: ParkInput["beforeNap"]
   pending?: PendingWrites
 }
 
@@ -111,21 +110,12 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
   }
   const { host, stdin } = probed
 
-  let carry: DraftCarry | undefined
-  if (options.carryDraft) {
+  const carry = options.carryDraft ? createDraftCarry({ renderer: host.renderer, files: proc.drafts }) : undefined
+  if (carry) {
     const missing = probeDraft(host.renderer)
     // Not a reason to turn off: each nap is skipped until the draft can be read.
     if (missing) log.once("draft unavailable: missing OpenCode internal", { name: missing })
-    const created = createDraftCarry({ renderer: host.renderer, files: proc.drafts })
-    carry = created
-    disposers.push(() => created.dispose())
-  }
-  const beforeNap = async () => {
-    const draftEnv = carry?.capture()
-    if (draftEnv instanceof NapDeferral) return draftEnv
-    const extra = await hooks.beforeNap?.()
-    if (extra instanceof NapDeferral) return extra
-    return draftEnv || extra ? { ...draftEnv, ...extra } : undefined
+    disposers.push(() => carry.dispose())
   }
 
   const resolveDirectory = directoryResolver(proc.start)
@@ -158,7 +148,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
         env: proc.env(),
         title: sessionID => host.data.session.get(sessionID)?.title,
         pending,
-        beforeNap,
+        beforeNap: () => carry?.capture(),
         stillDue: () => state === "napping" && decideNow().action === "nap",
         onExec: () => log.write("napping", { rule, route }),
         execve: proc.execve,
