@@ -56,7 +56,16 @@ export function writeDraft(text: string, dir: string = draftDir()): string | und
   if (text === "") return undefined
   ensurePrivateDir(dir)
   const path = resolve(dir, randomUUID())
-  writeFileSync(path, text, { encoding: "utf8", flag: "wx", mode: 0o600 })
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+  try {
+    writeFileSync(fd, text, "utf8")
+  } catch (error) {
+    // A failed write must not leave part of the draft on disk.
+    unlinkSync(path)
+    throw error
+  } finally {
+    closeSync(fd)
+  }
   return path
 }
 
