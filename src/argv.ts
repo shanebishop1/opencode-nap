@@ -60,6 +60,9 @@ export function buildWakeArgs(args: string[], route: Route): WakeArgs {
     if (SESSION_FLAGS.has(name) || PROMPT_FLAGS.has(name)) {
       if (inline === undefined) {
         if (i + 1 >= args.length) return refuse(`missing value for "${name}"`)
+        // OpenCode may have read a dash-led value as a flag of its own, so
+        // dropping it could also drop a flag the wake must keep.
+        if (args[i + 1].startsWith("-")) return refuse(`ambiguous value for "${name}"`)
         i += 1
       }
       continue

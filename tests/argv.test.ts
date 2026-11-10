@@ -29,12 +29,17 @@ describe("buildWakeArgs", () => {
     expect(argsOf(["-c", "--continue", "--auto"], session("ses_new"))).toEqual(["--auto", "-s", "ses_new"])
   })
 
-  it("ac-no-resubmit: drops --prompt in both forms, including a value that looks like a flag", () => {
+  it("ac-no-resubmit: drops --prompt in both forms", () => {
     expect(argsOf(["--prompt", "a b"], home)).toEqual([])
     expect(argsOf(["--prompt=a b"], home)).toEqual([])
-    expect(argsOf(["--prompt", "-s", "--auto"], home)).toEqual(["--auto"])
-    expect(argsOf(["--prompt", "-s"], session("ses_new"))).toEqual(["-s", "ses_new"])
-    expect(argsOf(["--prompt", "--continue"], home)).toEqual([])
+    expect(argsOf(["--prompt=--auto"], home)).toEqual([])
+  })
+
+  it("ac-unknown-args: refuses a dash-led separate value for a dropped flag", () => {
+    expect(reasonOf(["--prompt", "--auto"])).toContain("--prompt")
+    expect(reasonOf(["--prompt", "-s"], session("ses_new"))).toContain("--prompt")
+    expect(reasonOf(["-s", "--auto"], session("ses_new"))).toContain("-s")
+    expect(reasonOf(["--session", "-c"], session("ses_new"))).toContain("--session")
   })
 
   it("ac-no-resubmit: never emits --prompt or --continue and emits exactly one -s", () => {
