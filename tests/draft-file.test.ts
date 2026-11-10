@@ -42,8 +42,9 @@ describe("draft file", () => {
 
   it("round-trips multi-line and non-ASCII text", () => {
     const text = "first line\nsecond line — ünïcödé 🙂\n"
-    const path = write(text, join(tmp, "drafts"))
-    expect(readAndDeleteDraft(path)).toBe(text)
+    const dir = join(tmp, "drafts")
+    const path = write(text, dir)
+    expect(readAndDeleteDraft(path, dir)).toBe(text)
   })
 
   it.skipIf(process.platform === "win32")("keeps the draft directory 0700 and the draft file 0600", () => {
@@ -54,10 +55,11 @@ describe("draft file", () => {
   })
 
   it("deletes the draft when it is read", () => {
-    const path = write("once", join(tmp, "drafts"))
-    expect(readAndDeleteDraft(path)).toBe("once")
+    const dir = join(tmp, "drafts")
+    const path = write("once", dir)
+    expect(readAndDeleteDraft(path, dir)).toBe("once")
     expect(existsSync(path)).toBe(false)
-    expect(readAndDeleteDraft(path)).toBeUndefined()
+    expect(readAndDeleteDraft(path, dir)).toBeUndefined()
   })
 
   it("writes nothing for empty text", () => {
@@ -69,8 +71,9 @@ describe("draft file", () => {
   it("keeps a 1 MB draft intact", () => {
     const text = "é🙂\n".repeat(150_000)
     expect(Buffer.byteLength(text)).toBeGreaterThan(1024 * 1024)
-    const path = write(text, join(tmp, "drafts"))
-    expect(readAndDeleteDraft(path)).toBe(text)
+    const dir = join(tmp, "drafts")
+    const path = write(text, dir)
+    expect(readAndDeleteDraft(path, dir)).toBe(text)
   })
 
   it("takes the draft path from the environment and removes the variable", () => {
@@ -99,6 +102,17 @@ describe("draft file", () => {
     expect(cleanStaleDrafts(join(tmp, "missing"))).toBe(0)
   })
 
+  it("neither reads nor deletes a path outside the draft directory", () => {
+    const dir = join(tmp, "drafts")
+    mkdirSync(dir)
+    const outside = join(tmp, "important.txt")
+    writeFileSync(outside, "keep me")
+
+    expect(readAndDeleteDraft(outside, dir)).toBeUndefined()
+    expect(readAndDeleteDraft(`${dir}/../important.txt`, dir)).toBeUndefined()
+    expect(readFileSync(outside, "utf8")).toBe("keep me")
+  })
+
   it.skipIf(process.platform === "win32")("refuses a symlinked draft directory", () => {
     const target = join(tmp, "target")
     mkdirSync(target)
@@ -117,7 +131,7 @@ describe("draft file", () => {
     const link = join(dir, "link")
     symlinkSync(outside, link)
 
-    expect(readAndDeleteDraft(link)).toBeUndefined()
+    expect(readAndDeleteDraft(link, dir)).toBeUndefined()
     expect(existsSync(link)).toBe(false)
     expect(readFileSync(outside, "utf8")).toBe("secret")
   })

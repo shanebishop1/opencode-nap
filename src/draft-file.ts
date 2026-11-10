@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 
 /** Environment variable that hands the next draft's file path to the plugin. */
 export const DRAFT_ENV = "OPENCODE_NAP_DRAFT_FILE"
@@ -30,6 +30,11 @@ const currentUid = (): number | undefined => process.getuid?.()
 const ownedByUser = (stat: Stats): boolean => {
   const uid = currentUid()
   return uid === undefined || stat.uid === uid
+}
+
+const isUserDir = (dir: string): boolean => {
+  const stat = lstatSync(dir, { throwIfNoEntry: false })
+  return stat !== undefined && stat.isDirectory() && ownedByUser(stat)
 }
 
 /**
@@ -87,9 +92,11 @@ const readRegularFile = (path: string): string | undefined => {
 
 /**
  * Reads a draft and deletes its file, so the text lives on disk only until the
- * plugin takes it. Refused or missing paths give undefined; a refused path is still unlinked.
+ * plugin takes it. Refused or missing paths give undefined; a refused path inside
+ * the draft directory is still unlinked, and a path anywhere else is left alone.
  */
-export function readAndDeleteDraft(path: string): string | undefined {
+export function readAndDeleteDraft(path: string, dir: string = draftDir()): string | undefined {
+  if (dirname(resolve(path)) !== resolve(dir) || !isUserDir(dir)) return undefined
   const text = readRegularFile(path)
   try {
     unlinkSync(path)
@@ -113,7 +120,7 @@ export function takeDraftPath(env: NodeJS.ProcessEnv = process.env): string | un
 export function cleanStaleDrafts(dir: string = draftDir(), now: number = Date.now(), maxAgeMs: number = STALE_MS): number {
   let removed = 0
   try {
-    if (!lstatSync(dir).isDirectory()) return 0
+    if (!isUserDir(dir)) return 0
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isFile()) continue
       const file = join(dir, entry.name)
