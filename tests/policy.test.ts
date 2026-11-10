@@ -160,18 +160,18 @@ describe("decide (blur rule)", () => {
     })
   })
 
-  it("reports deferral reasons instead of napping on blur while work is pending", () => {
+  it("reports deferral reasons instead of napping on blur when a nap is unsafe", () => {
     expect(
       decide(
         input({
           focus: "unfocused",
           unfocusedSince: start.now,
           now: start.now + 2_000,
-          deferReasons: ["draft is being edited"],
+          deferReasons: ["draft unreadable"],
         }),
         blurOn,
       ),
-    ).toEqual({ action: "wait", checkAfterMs: 5_000, deferred: ["draft is being edited"] })
+    ).toEqual({ action: "wait", checkAfterMs: 5_000, deferred: ["draft unreadable"] })
   })
 
   it("reports no deferred reasons while the blur debounce has not elapsed", () => {
@@ -181,7 +181,7 @@ describe("decide (blur rule)", () => {
           focus: "unfocused",
           unfocusedSince: start.now,
           now: start.now + 1_999,
-          deferReasons: ["draft is being edited"],
+          deferReasons: ["draft unreadable"],
         }),
         blurOn,
       ),
@@ -227,17 +227,17 @@ describe("decide (blurIdle rule)", () => {
     })
   })
 
-  it("reports deferral reasons instead of napping on blurIdle while work is pending", () => {
+  it("reports deferral reasons instead of napping on blurIdle when a nap is unsafe", () => {
     expect(
       decide(
         input({
           focus: "unfocused",
           now: start.lastInputAt + 5 * MINUTE,
-          deferReasons: ["stream still running"],
+          deferReasons: ["wake command line refused"],
         }),
         blurIdleOn,
       ),
-    ).toEqual({ action: "wait", checkAfterMs: 5_000, deferred: ["stream still running"] })
+    ).toEqual({ action: "wait", checkAfterMs: 5_000, deferred: ["wake command line refused"] })
   })
 })
 
