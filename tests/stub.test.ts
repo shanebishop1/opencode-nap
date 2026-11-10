@@ -191,6 +191,14 @@ describe("stub under a terminal", () => {
     expect(run.fake?.stdin).toBe(PROBE)
   })
 
+  it("ac-wake-key: Ctrl-C wakes the stub instead of stopping it", async () => {
+    const run = await runStub({}, wakeSteps([{ send: "03" }]))
+
+    expect(run.timedOut).toBe(false)
+    expect(run.status).toBe(0)
+    expect(run.fake?.stdin).toBe(PROBE)
+  })
+
   it("ac-wake-key: the rest of a multi-byte key is swallowed too", async () => {
     const arrowUp = Buffer.from(`${ESC}[A`).toString("hex")
     const run = await runStub({}, wakeSteps([{ send: arrowUp }]))

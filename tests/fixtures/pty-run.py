@@ -24,7 +24,10 @@ def main():
     deadline = time.monotonic() + spec.get("timeout", 10)
     pid, fd = pty.fork()
     if pid == 0:
-        os.execv(spec["file"], spec["argv"])
+        try:
+            os.execv(spec["file"], spec["argv"])
+        finally:
+            os._exit(127)
 
     def kill(*_):
         try:
