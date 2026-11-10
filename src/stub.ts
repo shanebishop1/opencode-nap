@@ -64,8 +64,6 @@ printf 'Cannot wake: %s is not executable.\\nTo resume, run:\\n  %s\\n' "$openco
 exit 1
 `
 
-const SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/
-
 function isControl(code: number): boolean {
   return code < 0x20 || (code >= 0x7f && code <= 0x9f)
 }
@@ -92,14 +90,4 @@ export function buildStubExec(input: StubInput): StubExec {
       ...input.args,
     ],
   }
-}
-
-// Same quoting as the stub's own `quote`, so both print the same command.
-export function quoteWord(word: string): string {
-  if (SAFE_WORD.test(word)) return word
-  return `'${word.replace(/'/g, "'\\''")}'`
-}
-
-export function resumeCommand(opencodePath: string, args: string[]): string {
-  return [opencodePath, ...args].map(quoteWord).join(" ")
 }

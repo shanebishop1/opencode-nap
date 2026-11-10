@@ -2,12 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bu
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import {
-  STUB_SCRIPT,
-  buildStubExec,
-  resumeCommand,
-  sanitizeTitle,
-} from "../src/stub.js"
+import { STUB_SCRIPT, buildStubExec, sanitizeTitle } from "../src/stub.js"
 
 const HELPER = join(import.meta.dir, "fixtures", "pty-run.py")
 const FAKE = join(import.meta.dir, "fixtures", "fake-opencode.py")
@@ -40,6 +35,10 @@ const RESET_SEQUENCES = [
   "?2026l", "?1049l", "<99u", "?1000l", "?1002l", "?1003l", "?1006l",
   "?1015l", "?1004l", "?2004l", "?2027l", "?2031l", "?25h", "0m", "2J", "H",
 ].map(seq => `${ESC}[${seq}`)
+
+// The command the stub prints when it cannot wake: plain words bare, the rest single-quoted.
+const resumeCommand = (opencodePath: string, args: string[]): string =>
+  [opencodePath, ...args].map(word => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`)).join(" ")
 
 interface Step { expect?: string; send?: string; sleep?: number }
 interface FakeResult { argv: string[]; stdin: string; mark: string | null }
