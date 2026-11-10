@@ -283,7 +283,7 @@ describe("decide (focus rules)", () => {
     }
   })
 
-  it("ac-focus-not-input: a focus change does not reset the idle clock", () => {
+  it("a blur before the idle threshold does not delay the idle nap", () => {
     const beforeChange = input({ now: start.lastInputAt + 14 * MINUTE, focus: "focused" })
     expect(decide(beforeChange, options)).toEqual({ action: "wait", checkAfterMs: 5_000, deferred: [] })
 
