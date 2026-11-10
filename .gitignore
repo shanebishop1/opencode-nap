@@ -39,4 +39,3 @@ lerna-debug.log*
 tmp/
 temp/
 *.tmp
-tests/fixtures/e2e-home/

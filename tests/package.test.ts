@@ -12,6 +12,7 @@ describe("package artifact", () => {
     const manifest = await Bun.file("package.json").json() as {
       name: string
       exports: Record<string, unknown>
+      dependencies: Record<string, string>
       engines: Record<string, string>
     }
 
@@ -21,5 +22,11 @@ describe("package artifact", () => {
     expect(manifest.name).toBe("opencode-nap")
     expect(Object.keys(manifest.exports)).toEqual(["./tui"])
     expect(manifest.engines.opencode).toBe(">=2.2.4")
+    expect(manifest.dependencies).not.toHaveProperty("@opencode/plugin")
+    expect(await Bun.file("dist/tui.js").text()).not.toMatch(/from\s+["']@opencode\/plugin/)
+
+    const tui = await import("opencode-nap/tui")
+    expect(tui.default.id).toBe("opencode-nap")
+    expect(typeof tui.default.setup).toBe("function")
   }, 30_000)
 })
