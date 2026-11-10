@@ -40,7 +40,8 @@ def exit_code(status):
 def signal_group(pid, sig):
     try:
         os.killpg(pid, sig)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
+        # macOS answers EPERM, not ESRCH, for a group whose members have all exited.
         pass
 
 
