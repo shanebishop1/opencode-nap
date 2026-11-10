@@ -3,16 +3,20 @@ import { createHash } from "crypto"
 import { existsSync, readdirSync, readFileSync, statSync } from "fs"
 import { join } from "path"
 import {
+  callApi,
   cleanup,
   cliVersion,
   createScratch,
   createSession,
   e2eEnabled,
+  startProvider,
   startServer,
   startTuiWith,
   stopTuis,
+  writeServerConfig,
   type Scratch,
 } from "./e2e/harness.js"
+import { fakeProviderConfig, PERMISSION_DIALOG } from "./e2e/fake-provider.js"
 import { NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch, type Entry } from "./e2e/nap-run.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
@@ -23,6 +27,9 @@ let scratch: Scratch
 let server: { process: PtyProcess; url: string }
 
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
+
+const api = (method: string, path: string, body?: unknown) => callApi(scratch, server.url, method, path, body)
+const pendingPermissions = async (sessionID: string): Promise<any[]> => (await api("GET", `/api/session/${sessionID}/permission`)).data
 
 /** Draft files in the TUI's per-user draft directory under its TMPDIR. */
 function draftPaths(): string[] {
@@ -66,6 +73,8 @@ async function napAndWake(run: NapRun) {
 describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives a nap`, () => {
   beforeAll(async () => {
     scratch = await createScratch()
+    const provider = await startProvider(scratch, join(scratch.root, "provider.jsonl"), { chunks: 1, delayMs: 0 })
+    await writeServerConfig(scratch, fakeProviderConfig(provider.url))
     server = await startServer(scratch)
   }, 300_000)
 
@@ -132,4 +141,34 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     expect(after.cursorOffset).toBe(before.cursorOffset)
     expect(draftPaths()).toEqual([])
   }, 300_000)
+
+  it("ac-draft-dialog: a permission dialog on screen does not stop the nap, and the draft is back once it is answered", async () => {
+    const { sessionID, tui, run, watch } = await openSession("dialog")
+    const draft = "typed before the dialog ✓"
+    await run.typeDraft(draft)
+    await promptWhere(watch, prompt => prompt.text === draft, 10_000)
+
+    await api("POST", `/api/session/${sessionID}/prompt`, { text: "NAP_PERM ask while a draft waits" })
+    const [permission] = await waitUntil(async () => {
+      const found = await pendingPermissions(sessionID)
+      return found.length ? found : undefined
+    }, 30_000, "the permission prompt")
+    await waitUntil(() => (PERMISSION_DIALOG.test(tui.text()) ? true : undefined), 20_000, "the permission dialog")
+    // The dialog has taken focus from the prompt.
+    expect((await watch.ask("prompt")).result.focused).toBe(false)
+
+    const { whileNapped, offset } = await napAndWake(run)
+    const skipped = (await watch.napEntries()).filter(entry => /^nap (skipped|deferred)/.test(entry.message))
+    expect(skipped, await run.context()).toEqual([])
+    expect(whileNapped, await run.context()).toEqual([{ mode: 0o600, sha256: sha256(draft) }])
+
+    // Nobody answered while napped, and the dialog is back after wake.
+    expect((await pendingPermissions(sessionID)).map(request => request.id)).toEqual([permission.id])
+    await waitUntil(() => (PERMISSION_DIALOG.test(stripEscapesSince(tui, offset)) ? true : undefined), 20_000,
+      "the permission dialog after wake", () => stripEscapesSince(tui, offset).slice(-2500))
+    await api("POST", `/api/session/${sessionID}/permission/${permission.id}/reply`, { decision: "reject" })
+
+    await promptWhere(watch, prompt => prompt.text === draft, 30_000)
+    expect(draftPaths()).toEqual([])
+  }, 240_000)
 })
