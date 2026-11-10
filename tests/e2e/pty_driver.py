@@ -1,16 +1,15 @@
-"""Run one command under a pseudo-terminal for the end-to-end tests.
+"""Run one command under a 120x40 pseudo-terminal for the tests.
 
-Usage: pty_driver.py --output FILE [--cols N] [--rows N] [--cwd DIR] -- COMMAND...
+Usage: pty_driver.py --output FILE --cwd DIR -- COMMAND...
 
 The command inherits this process's environment. Everything it writes to the
 terminal is appended, raw, to FILE. Control is line-delimited JSON:
 
 stdout: {"pid": N} once the command starts, then {"exit": CODE} when it ends
         (CODE is negative for a signal, as in subprocess).
-stdin:  {"write": "<base64 bytes>"} sends input to the terminal,
-        {"resize": [cols, rows]} resizes it, {"signal": N} signals the
-        command's process group. EOF, SIGTERM, SIGINT or SIGHUP stop the
-        command's process group (SIGTERM, then SIGKILL) and end the driver.
+stdin:  {"write": "<base64 bytes>"} sends input to the terminal. EOF,
+        SIGTERM, SIGINT or SIGHUP stop the command's process group (SIGTERM,
+        then SIGKILL) and end the driver.
 """
 
 import argparse
@@ -25,10 +24,6 @@ import struct
 import sys
 import termios
 import time
-
-
-def set_size(fd, cols, rows):
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
 def emit(message):
@@ -72,12 +67,22 @@ def stop(pid):
     return status
 
 
+def drain(master, output):
+    # Output written just before the command exited is still buffered.
+    while select.select([master], [], [], 0)[0]:
+        try:
+            data = os.read(master, 65536)
+        except OSError:
+            return
+        if not data:
+            return
+        output.write(data)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
-    parser.add_argument("--cols", type=int, default=120)
-    parser.add_argument("--rows", type=int, default=40)
-    parser.add_argument("--cwd")
+    parser.add_argument("--cwd", required=True)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -87,9 +92,8 @@ def main():
     pid, master = pty.fork()
     if pid == 0:
         try:
-            set_size(sys.stdin.fileno(), args.cols, args.rows)
-            if args.cwd:
-                os.chdir(args.cwd)
+            fcntl.ioctl(sys.stdin.fileno(), termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+            os.chdir(args.cwd)
             os.execvp(command[0], command)
         finally:
             os._exit(127)
@@ -109,9 +113,8 @@ def main():
     status = None
     try:
         while not stopping:
-            readable = [master] + ([control] if control else [])
             try:
-                ready, _, _ = select.select(readable, [], [], 0.1)
+                ready, _, _ = select.select([master, control], [], [], 0.1)
             except InterruptedError:
                 continue
             if master in ready:
@@ -122,22 +125,15 @@ def main():
                 if not data:
                     break
                 output.write(data)
-            if control and control in ready:
+            if control in ready:
                 chunk = os.read(control.fileno(), 65536)
                 if not chunk:
                     break
                 pending += chunk
                 while b"\n" in pending:
                     line, pending = pending.split(b"\n", 1)
-                    if not line.strip():
-                        continue
-                    message = json.loads(line)
-                    if "write" in message:
-                        os.write(master, base64.b64decode(message["write"]))
-                    if "resize" in message:
-                        set_size(master, *message["resize"])
-                    if "signal" in message:
-                        signal_group(pid, int(message["signal"]))
+                    if line.strip():
+                        os.write(master, base64.b64decode(json.loads(line)["write"]))
             done, raw = os.waitpid(pid, os.WNOHANG)
             if done:
                 status = raw
@@ -145,6 +141,7 @@ def main():
     finally:
         final = stop(pid)
         status = status if status is not None else final
+        drain(master, output)
         output.close()
         os.close(master)
         emit({"exit": exit_code(status) if status is not None else None})

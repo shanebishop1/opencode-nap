@@ -21,8 +21,6 @@ export type PtyOptions = {
   cwd: string
   /** Raw terminal output is appended here. */
   outputFile: string
-  cols?: number
-  rows?: number
 }
 
 export type PtyProcess = {
@@ -66,8 +64,6 @@ export async function startPty(options: PtyOptions): Promise<PtyProcess> {
   const child = Bun.spawn([
     pythonPath(), "-I", driver,
     "--output", options.outputFile,
-    "--cols", String(options.cols ?? 120),
-    "--rows", String(options.rows ?? 40),
     "--cwd", options.cwd,
     "--", ...options.command,
   ], { env: options.env, cwd: options.cwd, stdin: "pipe", stdout: "pipe", stderr: "pipe" })

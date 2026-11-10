@@ -2,8 +2,8 @@
 
 Switches the terminal to raw mode, prints @@READY@@, then reads its input
 until it sees the probe byte "Z" (or 3 s pass) and prints
-@@RESULT@@<json>@@END@@ with its arguments, every input byte it got, and the
-NAP_TEST_MARK environment value.
+@@RESULT@@<json>@@END@@ with its arguments, every input byte it got (as
+latin-1 text), and the NAP_TEST_MARK environment value.
 """
 
 import json
@@ -28,7 +28,7 @@ while b"Z" not in got and time.monotonic() < deadline:
         got.extend(chunk)
 result = {
     "argv": sys.argv[1:],
-    "stdin": got.hex(),
+    "stdin": got.decode("latin1"),
     "mark": os.environ.get("NAP_TEST_MARK"),
 }
 os.write(1, b"@@RESULT@@" + json.dumps(result).encode() + b"@@END@@")

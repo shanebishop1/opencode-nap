@@ -3,17 +3,17 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { STUB_SCRIPT, buildStubExec, sanitizeTitle } from "../src/stub.js"
+import { startPty } from "./e2e/pty.js"
 
-const HELPER = join(import.meta.dir, "fixtures", "pty-run.py")
 const FAKE = join(import.meta.dir, "fixtures", "fake-opencode.py")
 const CARD = "Press any key or click to wake."
 const ESC = "\x1b"
 // The stub turns click reporting on last, just before it waits for input.
 const ARMED = `${ESC}[?1000h${ESC}[?1006h`
-const SPACE = "20"
-const CLICK_PRESS = Buffer.from(`${ESC}[<0;10;5M`).toString("hex")
-const CLICK_RELEASE = Buffer.from(`${ESC}[<0;10;5m`).toString("hex")
-const PROBE = Buffer.from("Z").toString("hex")
+const SPACE = " "
+const CLICK_PRESS = `${ESC}[<0;10;5M`
+const CLICK_RELEASE = `${ESC}[<0;10;5m`
+const PROBE = "Z"
 const MARK = "nap-test-mark"
 
 const TRICKY_ARGS = [
@@ -44,11 +44,12 @@ interface Step { expect?: string; send?: string; sleep?: number }
 interface FakeResult { argv: string[]; stdin: string; mark: string | null }
 interface Run { output: string; status: number | null; timedOut: boolean; fake?: FakeResult }
 
-// Above the helper's own 6 s timeout, so a hung stub is killed and reported.
+// Above a run's own 6 s limit, so a hung stub is killed and reported.
 setDefaultTimeout(15_000)
 
 let dir: string
 let opencode: string
+let runs = 0
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "opencode-nap-stub-"))
@@ -63,35 +64,50 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
+const sleep = (ms: number) => new Promise(done => setTimeout(done, ms))
+
+/**
+ * Runs the stub under a terminal. Steps run in order: `expect` waits for text
+ * in the output after the last match, `send` types, `sleep` waits. A run that
+ * has not exited within `timeoutMs` is stopped and reported as timed out.
+ */
 async function runStub(
   input: { cardTitle?: string; opencodePath?: string; args?: string[] },
   steps: Step[],
-  timeout = 6,
+  timeoutMs = 6_000,
 ): Promise<Run> {
   const exec = buildStubExec({
     cardTitle: input.cardTitle,
     opencodePath: input.opencodePath ?? opencode,
     args: input.args ?? [],
   })
-  const spec = { file: exec.file, argv: exec.argv, steps, timeout }
-  const proc = Bun.spawn(["python3", "-I", HELPER, JSON.stringify(spec)], {
-    env: { ...process.env, NAP_TEST_MARK: MARK },
-    stdout: "pipe",
-    stderr: "inherit",
+  const pty = await startPty({
+    command: [exec.file, ...exec.argv.slice(1)],
+    env: { ...process.env, NAP_TEST_MARK: MARK } as Record<string, string>,
+    cwd: dir,
+    outputFile: join(dir, `run-${++runs}.out`),
   })
-  const guard = setTimeout(() => proc.kill(), 10_000)
+  const deadline = Date.now() + timeoutMs
+  let status: number | null = null
   try {
-    const text = await new Response(proc.stdout).text()
-    await proc.exited
-    const raw = JSON.parse(text) as { output: string; status: number | null; timedOut: boolean }
-    const output = Buffer.from(raw.output, "hex").toString("latin1")
-    const match = /@@RESULT@@(.*)@@END@@/s.exec(output)
-    const fake = match ? JSON.parse(Buffer.from(match[1], "latin1").toString("utf8")) as FakeResult : undefined
-    return { output, status: raw.status, timedOut: raw.timedOut, fake }
+    let seen = 0
+    for (const step of steps) {
+      if (step.send !== undefined) pty.write(step.send)
+      if (step.sleep !== undefined) await sleep(step.sleep)
+      if (step.expect === undefined) continue
+      while (pty.output().indexOf(step.expect, seen) < 0 && Date.now() < deadline) await sleep(5)
+      const at = pty.output().indexOf(step.expect, seen)
+      if (at < 0) break
+      seen = at + step.expect.length
+    }
+    status = await Promise.race([pty.exited, sleep(Math.max(0, deadline - Date.now())).then(() => null)])
   } finally {
-    clearTimeout(guard)
-    proc.kill()
+    await pty.stop()
   }
+  const output = pty.output()
+  const match = /@@RESULT@@(.*)@@END@@/s.exec(output)
+  const fake = match ? JSON.parse(match[1]) as FakeResult : undefined
+  return { output, status, timedOut: status === null, fake }
 }
 
 function wakeSteps(wake: Step[]): Step[] {
@@ -191,7 +207,7 @@ describe("stub under a terminal", () => {
   })
 
   it("ac-wake-key: Ctrl-C wakes the stub instead of stopping it", async () => {
-    const run = await runStub({}, wakeSteps([{ send: "03" }]))
+    const run = await runStub({}, wakeSteps([{ send: "\x03" }]))
 
     expect(run.timedOut).toBe(false)
     expect(run.status).toBe(0)
@@ -199,15 +215,14 @@ describe("stub under a terminal", () => {
   })
 
   it("ac-wake-key: the rest of a multi-byte key is swallowed too", async () => {
-    const arrowUp = Buffer.from(`${ESC}[A`).toString("hex")
-    const run = await runStub({}, wakeSteps([{ send: arrowUp }]))
+    const run = await runStub({}, wakeSteps([{ send: `${ESC}[A` }]))
     expect(run.fake?.stdin).toBe(PROBE)
   })
 
   it("ac-wake-click: a click wakes OpenCode and no part of the mouse sequence reaches it", async () => {
     const run = await runStub(
       { args: ["-s", "ses_click"] },
-      wakeSteps([{ send: CLICK_PRESS }, { sleep: 0.03 }, { send: CLICK_RELEASE }]),
+      wakeSteps([{ send: CLICK_PRESS }, { sleep: 30 }, { send: CLICK_RELEASE }]),
     )
 
     expect(run.timedOut).toBe(false)
@@ -222,8 +237,8 @@ describe("stub under a terminal", () => {
   })
 
   it("input queued at nap time is discarded and does not wake the stub", async () => {
-    const stale = Buffer.from(`${ESC}[O${ESC}]11;rgb:0000/0000/0000${ESC}\\`).toString("hex")
-    const run = await runStub({}, [{ send: stale }, { expect: ARMED }, { sleep: 0.5 }], 1.5)
+    const stale = `${ESC}[O${ESC}]11;rgb:0000/0000/0000${ESC}\\`
+    const run = await runStub({}, [{ send: stale }, { expect: ARMED }, { sleep: 500 }], 1_500)
 
     expect(run.timedOut).toBe(true)
     expect(run.output).not.toContain("@@READY@@")
