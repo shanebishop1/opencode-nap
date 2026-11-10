@@ -28,6 +28,14 @@ async function start(setup: Setup = {}) {
 
 const messages = (log: ReturnType<typeof fakeLog>) => log.entries.map(entry => entry.message)
 
+/** Pending writes held until `finish` runs. */
+function heldWrite(limitMs?: number) {
+  const pending = createPendingWrites(limitMs)
+  let finish = () => {}
+  void pending.track(new Promise<void>(done => { finish = done }))
+  return { pending, finish }
+}
+
 describe("startNap", () => {
   it("ac-idle-nap: execs the stub with the wake command line and the TUI's environment once idle", async () => {
     const { fake, log } = await start()
@@ -69,14 +77,26 @@ describe("startNap", () => {
   })
 
   it("waits for the plugin's pending storage writes before the exec", async () => {
-    const pending = createPendingWrites()
-    let finish = () => {}
+    const { finish, pending } = heldWrite()
     const { fake } = await start({ hooks: { pending } })
-    void pending.track(new Promise<void>(done => { finish = done }))
     await fake.advance(IDLE_MS + 5_000)
     expect(fake.execs).toHaveLength(0)
     finish()
     await fake.advance(0)
+    expect(fake.execs).toHaveLength(1)
+  })
+
+  it("skips a nap whose pending writes outlast their limit, logs once and tries again", async () => {
+    const { finish, pending } = heldWrite(10)
+    const { fake, log } = await start({ hooks: { pending } })
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await fake.advance(attempt === 0 ? IDLE_MS + 5_000 : 5_000)
+      await new Promise(done => setTimeout(done, 30))
+    }
+    expect(fake.execs).toHaveLength(0)
+    expect(messages(log)).toEqual(["watching", "nap skipped: the plugin's storage writes took too long"])
+    finish()
+    await fake.advance(5_000)
     expect(fake.execs).toHaveLength(1)
   })
 
@@ -136,9 +156,8 @@ describe("startNap", () => {
   })
 
   it("checks again before the exec, so input during the wait for writes stops the nap", async () => {
-    let finish = () => {}
-    const write = new Promise<void>(done => { finish = done })
-    const { fake, context, log } = await start({ hooks: { pending: { track: value => value, settled: () => write } } })
+    const { finish, pending } = heldWrite()
+    const { fake, context, log } = await start({ hooks: { pending } })
     await fake.advance(IDLE_MS + 5_000)
     context.renderer.keyInput.emit("keypress", { name: "a" })
     finish()
@@ -161,9 +180,8 @@ describe("startNap", () => {
   })
 
   it("does not exec when the renderer is suspended during the wait for writes", async () => {
-    let finish = () => {}
-    const write = new Promise<void>(done => { finish = done })
-    const { fake, context } = await start({ hooks: { pending: { track: value => value, settled: () => write } } })
+    const { finish, pending } = heldWrite()
+    const { fake, context } = await start({ hooks: { pending } })
     await fake.advance(IDLE_MS + 5_000)
     context.renderer.controlState = "explicit_suspended"
     finish()
@@ -172,9 +190,8 @@ describe("startNap", () => {
   })
 
   it("does not exec when cleanup runs during the wait for writes", async () => {
-    let finish = () => {}
-    const write = new Promise<void>(done => { finish = done })
-    const { fake, cleanup } = await start({ hooks: { pending: { track: value => value, settled: () => write } } })
+    const { finish, pending } = heldWrite()
+    const { fake, cleanup } = await start({ hooks: { pending } })
     await fake.advance(IDLE_MS + 5_000)
     cleanup()
     finish()

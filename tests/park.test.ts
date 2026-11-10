@@ -78,6 +78,12 @@ describe("park", () => {
     expect(parkInput.calls).toHaveLength(0)
   })
 
+  it("skips when the writes outlast their limit", async () => {
+    const parkInput = input({ pending: { track: write => write, settled: async () => false } })
+    expect(await park(parkInput)).toEqual({ status: "skipped", reason: "the plugin's storage writes took too long" })
+    expect(parkInput.calls).toHaveLength(0)
+  })
+
   it("a failed write does not block the nap", async () => {
     const pending = createPendingWrites()
     void pending.track(Promise.reject(new Error("disk full"))).catch(() => {})

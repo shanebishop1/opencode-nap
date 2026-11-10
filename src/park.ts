@@ -45,7 +45,7 @@ export async function park(input: ParkInput): Promise<ParkResult> {
 
   const title = route.type === "session" ? input.title(route.sessionID) : undefined
   const extraEnv = await input.beforeNap?.()
-  await input.pending.settled()
+  if (!(await input.pending.settled())) return { status: "skipped", reason: "the plugin's storage writes took too long" }
   if (!input.stillDue()) return { status: "skipped", reason: "no longer due after waiting" }
 
   const stub = buildStubExec({
