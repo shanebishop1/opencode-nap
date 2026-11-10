@@ -135,3 +135,12 @@ describe("collectGuardFacts", () => {
     expect(typeof facts.shExecutable).toBe("boolean")
   })
 })
+
+describe("on Windows", () => {
+  it.skipIf(process.platform !== "win32")("turns the plugin off without throwing", () => {
+    expect(checkGuards(collectGuardFacts({ enabled: true, serverPid: 1 }))).toEqual({
+      ok: false,
+      reason: "Windows is not supported",
+    })
+  })
+})
