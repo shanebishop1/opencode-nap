@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode/plugin/tui"
 import { buildWakeArgs } from "./argv.js"
 import { parseOptions } from "./config.js"
 import { directoryResolver } from "./directory.js"
-import { createDraftCarry, restoreDraft } from "./draft.js"
+import { createDraftCarry, restoreDraft, type DraftRestore } from "./draft.js"
 import { createFocusSource, type FocusSource } from "./focus.js"
 import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
@@ -37,14 +37,13 @@ const rendererOf = (context: unknown): unknown => {
 }
 
 /** Restores the draft of the nap that started this TUI, whatever the options say now: it is the user's text. */
-function restoreHandedOverDraft(context: unknown, proc: NapProcess, log: Log): () => void {
+function restoreHandedOverDraft(context: unknown, proc: NapProcess, log: Log): DraftRestore | undefined {
   try {
     const text = proc.drafts.take()
-    if (text === undefined) return () => {}
-    return restoreDraft({ text, renderer: rendererOf(context), now: proc.now, setTimer: proc.setTimer, clearTimer: proc.clearTimer, log })
+    return text === undefined ? undefined : restoreDraft({ text, renderer: rendererOf(context), log })
   } catch (error) {
     log.once("draft not restored", { reason: describe(error) })
-    return () => {}
+    return undefined
   }
 }
 
@@ -76,10 +75,10 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     release()
   }
   // First, so the hand-over variable is gone however the plugin turns out.
-  const stopRestore = restoreHandedOverDraft(context, proc, log)
+  const restore = restoreHandedOverDraft(context, proc, log)
   const cleanup = () => {
     state = "off"
-    stopRestore()
+    restore?.stop()
     release()
   }
 
@@ -106,7 +105,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
   }
   const { host, stdin } = probed
 
-  const carry = options.carryDraft ? createDraftCarry({ renderer: host.renderer, files: proc.drafts }) : undefined
+  const carry = options.carryDraft ? createDraftCarry({ renderer: host.renderer, files: proc.drafts, unrestored: () => restore?.unrestored() }) : undefined
   if (carry) {
     const missing = probePrompt(host.renderer)
     // Not a reason to turn off: each nap is skipped until the draft can be read.

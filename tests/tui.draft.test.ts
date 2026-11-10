@@ -74,7 +74,7 @@ describe("draft carry-over", () => {
     expect(readFileSync(path!, "utf8")).toBe(DRAFT)
 
     // The woken TUI's prompt appears about 1.5 s after setup.
-    const woken = await start({ env: wokenEnv, edit: context => { context.renderer.currentFocusedEditor = null; context.renderer.mounted = [] } })
+    const woken = await start({ env: wokenEnv, edit: context => { context.renderer.currentFocusedEditor = null } })
     expect(woken.env[DRAFT_ENV]).toBeUndefined()
     expect(existsSync(path!)).toBe(false)
     await woken.fake.advance(1_500)
@@ -114,16 +114,24 @@ describe("draft carry-over", () => {
     expect(woken.context.prompt.text).toBe("")
   })
 
-  it("ac-draft-dialog: a dialog leaving nothing focused does not stop the nap or lose the draft", async () => {
-    const { wokenEnv } = await napWith(DRAFT, {
-      edit: context => { context.renderer.mounted = [] },
-      // The permission dialog takes focus after setup.
-      after: context => {
-        context.renderer.currentFocusedEditor = null
-        context.renderer.emit("focused_editor", null, context.prompt)
-      },
-    })
-    const woken = await start({ env: wokenEnv })
+  it("ac-draft-dialog: a dialog that destroys the prompt does not stop the nap or lose the draft", async () => {
+    const dialog = (context: ReturnType<typeof fakeContext>) => {
+      context.renderer.currentFocusedEditor = null
+      context.renderer.emit("focused_editor", null, context.prompt)
+      context.prompt.isDestroyed = true
+      Object.defineProperty(context.prompt, "plainText", { get: () => { throw new Error("EditBuffer is destroyed") } })
+    }
+    const napped = await napWith(DRAFT, { after: dialog })
+
+    // Woken with the dialog still showing, so no prompt mounts; it naps again with the draft.
+    const behindDialog = await napWith("", { env: napped.wokenEnv, edit: context => { context.renderer.currentFocusedEditor = null } })
+    expect(readFileSync(behindDialog.wokenEnv[DRAFT_ENV]!, "utf8")).toBe(DRAFT)
+
+    // The dialog is answered after this wake, and the prompt mounts.
+    const woken = await start({ env: behindDialog.wokenEnv, edit: context => { context.renderer.currentFocusedEditor = null } })
+    await woken.fake.advance(60_000)
+    woken.context.renderer.currentFocusedEditor = woken.context.prompt
+    woken.context.renderer.emit("focused_editor", woken.context.prompt, null)
     expect(woken.context.prompt.text).toBe(DRAFT)
   })
 
@@ -205,16 +213,15 @@ describe("draft carry-over", () => {
     expect(woken.context.prompt.text).toBe(DRAFT)
     // A failed restore and a deferral as well.
     await start({ env: { [DRAFT_ENV]: join(dir, "missing") }, log, options: { debugLogFile } })
-    const failing = await start({ log, options: { debugLogFile }, edit: context => {
-      context.prompt.text = DRAFT
+    const failing = await start({ log, options: { debugLogFile }, edit: context => { context.prompt.text = DRAFT }, after: context => {
       context.prompt.isDestroyed = true
-      context.renderer.mounted = []
+      context.renderer.currentFocusedEditor = null
     } })
     await failing.fake.advance(IDLE_MS + 5_000)
 
     const written = readFileSync(debugLogFile, "utf8")
     const lines = written.trim().split("\n").map(line => JSON.parse(line).message)
-    for (const message of ["napping", "draft restored", "draft not restored", "nap skipped: cannot read the draft: the prompt editor was not found"]) {
+    for (const message of ["napping", "draft restored", "draft not restored", "nap skipped: cannot read the draft: the prompt was destroyed before its text could be read"]) {
       expect(lines).toContain(message)
     }
     for (const part of [DRAFT, ...DRAFT.split(/\s+/).filter(word => word.length > 3)]) {

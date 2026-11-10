@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import { createPromptFinder, isPromptEditor, probePrompt } from "../src/prompt.js"
-import { fakeEditor, fakeRenderer as renderer, withoutCurrentEditor } from "./fakes.js"
+import { isPromptEditor, probePrompt, trackPrompt } from "../src/prompt.js"
+import { fakeEditor, fakeRenderer as renderer, settle, withoutCurrentEditor } from "./fakes.js"
 
 describe("isPromptEditor", () => {
   it("accepts OpenCode's session prompt and nothing else", () => {
@@ -26,77 +26,70 @@ describe("probePrompt", () => {
   })
 })
 
-describe("createPromptFinder", () => {
-  it("finds the focused prompt", () => {
+describe("trackPrompt", () => {
+  it("reads the focused prompt", () => {
     const r = renderer()
-    const found = createPromptFinder(r).find()
-    expect(found).toEqual({ ok: true, editor: r.currentFocusedEditor as never })
+    r.prompt.text = "draft"
+    expect(trackPrompt(r).text()).toBe("draft")
   })
 
-  it("ac-draft-dialog: keeps the last focused prompt while a dialog leaves nothing focused", () => {
+  it("ac-draft-dialog: keeps the text of a prompt a dialog destroyed, read as it lost focus", () => {
     const r = renderer()
-    r.mounted = []
-    const finder = createPromptFinder(r)
-    const prompt = r.currentFocusedEditor
+    const tracker = trackPrompt(r)
+    r.prompt.text = "draft"
     r.currentFocusedEditor = null
-    r.emit("focused_editor", null, prompt)
-    expect(finder.find()).toEqual({ ok: true, editor: prompt as never })
-  })
-
-  it("prefers the prompt over a dialog's editor and a newer prompt over an older one", () => {
-    const r = renderer()
-    r.mounted = []
-    const finder = createPromptFinder(r)
-    const dialog = fakeEditor("dialog text", { suspend: true })
-    r.currentFocusedEditor = dialog
-    r.emit("focused_editor", dialog, null)
-    expect(finder.find()).toEqual({ ok: true, editor: r.prompt as never })
-
-    // Going home mounts a new prompt; the old one is destroyed.
-    const home = fakeEditor("home")
+    r.emit("focused_editor", null, r.prompt)
     r.prompt.isDestroyed = true
-    r.currentFocusedEditor = home
-    r.emit("focused_editor", home, dialog)
-    r.currentFocusedEditor = null
-    expect(finder.find()).toEqual({ ok: true, editor: home as never })
+    Object.defineProperty(r.prompt, "plainText", { get: () => { throw new Error("EditBuffer is destroyed") } })
+    expect(tracker.text()).toBe("draft")
   })
 
-  it("checks the traits when the prompt is needed, since they are set after its first focus", () => {
+  it("follows a new prompt, noticed once OpenCode has set its traits", async () => {
     const r = renderer()
-    r.mounted = []
-    const early = fakeEditor("typed", { suspend: true })
-    r.currentFocusedEditor = early
-    const finder = createPromptFinder(r)
-    r.currentFocusedEditor = null
-    expect(finder.find()).toEqual({ ok: false, reason: "the prompt editor was not found" })
-    early.traits = { suspend: true, owner: "opencode", role: "prompt" }
-    expect(finder.find()).toEqual({ ok: true, editor: early as never })
+    const seen: unknown[] = []
+    const tracker = trackPrompt(r, editor => seen.push(editor))
+    expect(seen).toEqual([r.prompt])
+    const next = fakeEditor("next", { suspend: true })
+    r.currentFocusedEditor = next
+    r.emit("focused_editor", next, r.prompt)
+    next.traits = { suspend: true, owner: "opencode", role: "prompt" }
+    await settle()
+    expect(seen).toEqual([r.prompt, next])
+    expect(tracker.text()).toBe("next")
   })
 
-  it("falls back to the renderable tree for a prompt that was never focused", () => {
+  it("does not take a dialog's editor for the prompt", () => {
     const r = renderer()
-    const hidden = r.prompt
-    hidden.text = "draft"
-    r.currentFocusedEditor = null
-    r.root = { getChildren: () => [{ getChildren: () => [fakeEditor("x", {}), { getChildren: () => [hidden] }] }] }
-    expect(createPromptFinder(r).find()).toEqual({ ok: true, editor: hidden as never })
+    const tracker = trackPrompt(r)
+    r.prompt.text = "draft"
+    const answer = fakeEditor("custom answer", { status: "ANSWER" })
+    r.currentFocusedEditor = answer
+    r.emit("focused_editor", answer, r.prompt)
+    expect(tracker.text()).toBe("draft")
   })
 
-  it("refuses to guess between several never-focused prompts holding text", () => {
+  it("has no text before any prompt mounts, unless an unknown editor is focused", () => {
     const r = renderer()
     r.currentFocusedEditor = null
-    r.mounted = [fakeEditor("one"), fakeEditor("two")]
-    expect(createPromptFinder(r).find()).toEqual({ ok: false, reason: "more than one prompt holds text" })
-    r.mounted = [fakeEditor(""), fakeEditor("two")]
-    expect(createPromptFinder(r).find()).toEqual({ ok: true, editor: r.mounted[1] as never })
+    const tracker = trackPrompt(r)
+    expect(tracker.text()).toBeUndefined()
+    r.currentFocusedEditor = fakeEditor("typed", {})
+    expect(() => tracker.text()).toThrow("the focused editor is not OpenCode's prompt")
   })
 
-  it("reports a missing internal, and stops listening on dispose", () => {
+  it("reports a prompt destroyed before its text was read", () => {
     const r = renderer()
-    const finder = createPromptFinder(r)
+    const tracker = trackPrompt(r)
+    r.prompt.isDestroyed = true
+    r.currentFocusedEditor = null
+    expect(() => tracker.text()).toThrow("the prompt was destroyed before its text could be read")
+  })
+
+  it("stops listening on dispose", () => {
+    const r = renderer()
+    const tracker = trackPrompt(r)
     expect(r.count()).toBe(1)
-    finder.dispose()
+    tracker.dispose()
     expect(r.count()).toBe(0)
-    expect(createPromptFinder(withoutCurrentEditor(r)).find()).toEqual({ ok: false, reason: "missing OpenCode internal renderer.currentFocusedEditor" })
   })
 })

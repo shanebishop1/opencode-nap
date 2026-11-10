@@ -78,9 +78,6 @@ export function fakeContext(stdin: FakeEmitter) {
     stdin,
     controlState: "auto_started" as unknown,
     currentFocusedEditor: prompt as unknown,
-    /** Editors in the renderable tree. */
-    mounted: [prompt] as unknown[],
-    root: { getChildren: (): unknown[] => renderer.mounted },
   })
   const context = {
     options: {},
@@ -96,7 +93,7 @@ export function fakeContext(stdin: FakeEmitter) {
   return context
 }
 
-/** A renderer whose empty prompt is focused and mounted. */
+/** A renderer whose empty prompt is focused. */
 export const fakeRenderer = () => {
   const context = fakeContext(new FakeEmitter())
   return Object.assign(context.renderer, { prompt: context.prompt })
