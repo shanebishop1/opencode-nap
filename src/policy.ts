@@ -28,42 +28,33 @@ interface RuleCheck {
 type Rule = (input: PolicyInput, options: RuleOptions) => RuleCheck | undefined
 
 const MINUTE_MS = 60_000
-export const BLUR_DEBOUNCE_MS = 2_000
+const BLUR_DEBOUNCE_MS = 2_000
 const MIN_CHECK_MS = 250
 const MAX_CHECK_MS = 5_000
 const DEFERRED_CHECK_MS = 5_000
 
-function idleMsSince(input: PolicyInput): number {
-  return Math.max(0, input.now - input.lastInputAt)
-}
+const after = (rule: RuleName, elapsedMs: number, thresholdMs: number): RuleCheck =>
+  ({ rule, due: elapsedMs >= thresholdMs, dueInMs: Math.max(0, thresholdMs - elapsedMs) })
 
-const idleRule: Rule = (input, options) => {
-  const idleMs = idleMsSince(input)
-  const thresholdMs = options.idleMinutes * MINUTE_MS
-  return { rule: "idle", due: idleMs >= thresholdMs, dueInMs: Math.max(0, thresholdMs - idleMs) }
-}
+const idleMs = (input: PolicyInput): number => Math.max(0, input.now - input.lastInputAt)
+
+const idleRule: Rule = (input, options) => after("idle", idleMs(input), options.idleMinutes * MINUTE_MS)
 
 const blurIdleRule: Rule = (input, options) => {
   if (options.blurIdleMinutes === undefined || input.focus !== "unfocused") return undefined
-  const idleMs = idleMsSince(input)
-  const thresholdMs = options.blurIdleMinutes * MINUTE_MS
-  return { rule: "blurIdle", due: idleMs >= thresholdMs, dueInMs: Math.max(0, thresholdMs - idleMs) }
+  return after("blurIdle", idleMs(input), options.blurIdleMinutes * MINUTE_MS)
 }
 
 const blurRule: Rule = (input, options) => {
   if (!options.napOnBlur || input.focus !== "unfocused" || input.unfocusedSince === undefined) return undefined
-  const unfocusedMs = input.now - input.unfocusedSince
-  return { rule: "blur", due: unfocusedMs >= BLUR_DEBOUNCE_MS, dueInMs: Math.max(0, BLUR_DEBOUNCE_MS - unfocusedMs) }
+  return after("blur", input.now - input.unfocusedSince, BLUR_DEBOUNCE_MS)
 }
 
 // Order is precedence: when several rules are due, the first one listed is reported.
 const rules: Rule[] = [idleRule, blurIdleRule, blurRule]
 
 export function decide(input: PolicyInput, options: RuleOptions): Decision {
-  const checks = rules.flatMap(rule => {
-    const check = rule(input, options)
-    return check ? [check] : []
-  })
+  const checks = rules.flatMap(rule => rule(input, options) ?? [])
   const due = checks.find(check => check.due)
 
   if (due) {
