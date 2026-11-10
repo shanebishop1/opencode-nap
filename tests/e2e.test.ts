@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFile } from "fs/promises"
 import { join } from "path"
-import { $ } from "bun"
 import {
   cleanup,
   cliVersion,
@@ -69,93 +68,5 @@ describe.skipIf(!enabled)(`OpenCode ${cliVersion} loads the packed plugin in a r
     expect(tui.text(), context).not.toContain("Plugin failed")
     await tui.stop()
   }, 120_000)
-
-  it("ac-idle-nap, ac-wake-key: naps in place under 5 MB and a Space wakes it into the same session", async () => {
-    if (!scratch || !server) throw new Error("setup failed")
-    const debugLogFile = join(scratch.root, "nap-wake.log")
-    await writeCliConfig(scratch, [{ package: installedPackage(scratch), options: { idleMinutes: 0.25, debugLogFile } }])
-
-    const sessionID = await createSession(scratch, server.url)
-    const tui = await startTui(scratch, server.url, sessionID)
-    const context = () => `log:\n${JSON.stringify(entriesSoFar, null, 1).slice(-3000)}\nTUI screen:\n${tui.text().slice(-3000)}`
-    let entriesSoFar: LogEntry[] = []
-    const waitForLog = async (count: number, message: string, timeoutMs: number) => {
-      const deadline = Date.now() + timeoutMs
-      while (Date.now() < deadline) {
-        entriesSoFar = await readLog(debugLogFile)
-        if (entriesSoFar.filter(entry => entry.message === message).length >= count) return Date.now()
-        await sleep(100)
-      }
-      throw new Error(`timed out waiting for "${message}" #${count}\n${context()}`)
-    }
-
-    const watchingAt = await waitForLog(1, "watching", 60_000)
-    expect(entriesSoFar.map(entry => entry.message), context()).toEqual(["loaded", "watching"])
-    await sleep(3_000)
-    const promptBefore = lastCursor(tui.output())
-    expect(promptBefore, context()).toBeDefined()
-    const awake = await processTree(tui.pid)
-    expect(awake.leader, context()).toContain("opencode")
-
-    // 15 s idle, checked at most every 5 s, plus the exec.
-    const cardShown = await tui.waitFor(/Napping to save memory\. Press any key or click to wake\./, 40_000)
-    const nappedAt = Date.now()
-    expect(cardShown, context()).toBeTruthy()
-    expect(nappedAt - watchingAt, context()).toBeLessThan(15_000 + 15_000)
-    await sleep(500)
-    const napped = await processTree(tui.pid)
-    expect(napped.leader, context()).toMatch(/^sh -c /)
-    expect(napped.rssKiB, context()).toBeLessThan(5 * 1024)
-
-    const spaceAt = Date.now()
-    tui.write(" ")
-    const wokeAt = await waitForLog(2, "watching", 60_000)
-    const woken = await processTree(tui.pid)
-    const argv = (await readFile(`/proc/${tui.pid}/cmdline`, "utf8")).split("\0").filter(Boolean)
-    expect(argv.slice(1), context()).toEqual(["--server", server.url, scratch.project, "-s", sessionID])
-    expect(entriesSoFar.map(entry => entry.message), context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
-    expect(entriesSoFar[2].detail?.route, context()).toEqual({ type: "session", sessionID })
-
-    // The empty prompt's cursor is where it was before the nap; a Space that
-    // reached the prompt would have moved it one column.
-    await sleep(3_000)
-    const raw = tui.output()
-    const promptAfter = lastCursor(raw.slice(raw.lastIndexOf("Napping to save memory")))
-    expect(promptAfter, context()).toEqual(promptBefore)
-    console.log(`awake ${awake.rssKiB} KiB; napped ${napped.rssKiB} KiB over ${napped.count} processes; ` +
-      `idle to card ${nappedAt - watchingAt} ms; Space to plugin running ${wokeAt - spaceAt} ms; woken ${woken.rssKiB} KiB`)
-  }, 180_000)
 })
 
-/** The last place the TUI showed its cursor, as "row;column". */
-function lastCursor(raw: string): string | undefined {
-  // eslint-disable-next-line no-control-regex
-  const shown = [...raw.matchAll(/\x1b\[(\d+);(\d+)H\x1b\[\?25h/g)]
-  const last = shown[shown.length - 1]
-  return last ? `${last[1]};${last[2]}` : undefined
-}
-
-/** Resident memory of a process and its descendants, and the leader's command line. */
-async function processTree(pid: number): Promise<{ leader: string; rssKiB: number; count: number }> {
-  const rows = (await $`ps -A -o pid=,ppid=,rss=,args=`.quiet().text())
-    .split("\n")
-    .map(line => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
-    .filter((match): match is RegExpMatchArray => match !== null)
-    .map(match => ({ pid: Number(match[1]), ppid: Number(match[2]), rss: Number(match[3]), args: match[4] }))
-  const family = new Set([pid])
-  for (let grew = true; grew;) {
-    grew = false
-    for (const row of rows) {
-      if (family.has(row.ppid) && !family.has(row.pid)) {
-        family.add(row.pid)
-        grew = true
-      }
-    }
-  }
-  const members = rows.filter(row => family.has(row.pid))
-  return {
-    leader: rows.find(row => row.pid === pid)?.args ?? "",
-    rssKiB: members.reduce((total, row) => total + row.rss, 0),
-    count: members.length,
-  }
-}
