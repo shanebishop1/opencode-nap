@@ -1,5 +1,7 @@
 import { readFile } from "fs/promises"
+import { resolve } from "path"
 import { $ } from "bun"
+import { pythonPath } from "./pty.js"
 
 export type ProcessInfo = { pid: number; ppid: number; rss: number; args: string }
 
@@ -38,12 +40,20 @@ export async function processTree(pid: number): Promise<{ leader: string; rssKiB
   }
 }
 
-export async function readArgv(pid: number): Promise<string[]> {
-  return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter(Boolean)
+const procargs = resolve(import.meta.dir, "procargs.py")
+
+// macOS has no /proc, so there a process's argv and environment come from sysctl.
+const readProc = async (pid: number, file: "cmdline" | "environ"): Promise<string[]> => {
+  const fields = process.platform === "darwin"
+    ? (JSON.parse(await $`${pythonPath()} -I ${procargs} ${pid}`.quiet().text()) as Record<typeof file, string[]>)[file]
+    : (await readFile(`/proc/${pid}/${file}`, "utf8")).split("\0")
+  return fields.filter(Boolean)
 }
+
+export const readArgv = (pid: number): Promise<string[]> => readProc(pid, "cmdline")
 
 /** The environment a process was started with. Never print the values: they include the server password. */
 export async function readEnviron(pid: number): Promise<Map<string, string>> {
-  const entries = (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0").filter(Boolean)
+  const entries = await readProc(pid, "environ")
   return new Map(entries.map(entry => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]))
 }
