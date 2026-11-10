@@ -171,6 +171,18 @@ describe("startNap", () => {
     expect(fake.execs).toHaveLength(0)
   })
 
+  it("does not exec when cleanup runs during the wait for writes", async () => {
+    let finish = () => {}
+    const write = new Promise<void>(done => { finish = done })
+    const { fake, cleanup } = await start({ hooks: { pending: { track: value => value, settled: () => write } } })
+    await fake.advance(IDLE_MS + 5_000)
+    cleanup()
+    finish()
+    await fake.advance(10 * IDLE_MS)
+    expect(fake.execs).toHaveLength(0)
+    expect(fake.timers.size).toBe(0)
+  })
+
   describe("ac-refuse: logs the reason once and never naps", () => {
     const cases: Array<[string, Setup, string]> = [
       ["Windows", { facts: { platform: "win32" } }, "Windows is not supported"],

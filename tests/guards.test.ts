@@ -134,6 +134,21 @@ describe("collectGuardFacts", () => {
     expect(typeof facts.stdoutIsTTY).toBe("boolean")
     expect(typeof facts.shExecutable).toBe("boolean")
   })
+
+  it("takes the unsafe value for a fact that cannot be read", () => {
+    const argv = Object.getOwnPropertyDescriptor(process, "argv")
+    Object.defineProperty(process, "argv", { configurable: true, get: () => { throw new Error("unreadable") } })
+    try {
+      const facts = collectGuardFacts({ enabled: true, serverPid: 1 })
+      expect(facts.args).toEqual(["--standalone"])
+      expect(checkGuards({ ...facts, platform: "linux", hasExecve: true, isMainThread: true })).toEqual({
+        ok: false,
+        reason: "started with --standalone: the server runs in this process",
+      })
+    } finally {
+      if (argv) Object.defineProperty(process, "argv", argv)
+    }
+  })
 })
 
 describe("on Windows", () => {
