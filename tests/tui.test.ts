@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { createPendingWrites } from "../src/park.js"
+import { createPendingWrites } from "../src/pending.js"
 import { buildStubExec } from "../src/stub.js"
 import { startNap, type NapHooks } from "../src/tui.js"
 import { fakeContext, fakeLog, fakeProcess, settle, SERVER_URL, SESSION_ID } from "./fakes.js"

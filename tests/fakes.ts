@@ -1,6 +1,6 @@
 import type { GuardFacts } from "../src/guards.js"
 import type { Log } from "../src/log.js"
-import type { NapProcess } from "../src/tui.js"
+import type { NapProcess } from "../src/process.js"
 
 type Listener = (...args: unknown[]) => void
 
@@ -27,7 +27,7 @@ export class FakeEmitter {
   }
 }
 
-export type LogEntry = { message: string; detail?: any }
+type LogEntry = { message: string; detail?: any }
 
 export function fakeLog(): Log & { entries: LogEntry[] } {
   const entries: LogEntry[] = []
@@ -76,7 +76,7 @@ export const safeFacts: GuardFacts = {
   shExecutable: true,
 }
 
-export type ExecCall = { file: string; argv: string[]; env: NodeJS.ProcessEnv }
+type ExecCall = { file: string; argv: string[]; env: NodeJS.ProcessEnv }
 
 /** A process with a manual clock and timers, and an execve that records its calls. */
 export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardFacts> } = {}) {

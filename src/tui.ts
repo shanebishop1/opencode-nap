@@ -1,39 +1,16 @@
-import { fstatSync } from "node:fs"
 import type { Plugin } from "@opencode/plugin/tui"
 import { buildWakeArgs } from "./argv.js"
 import { parseOptions } from "./config.js"
+import { directoryResolver } from "./directory.js"
 import { createFocusSource, type FocusSource } from "./focus.js"
-import { checkGuards, collectGuardFacts, type GuardFacts } from "./guards.js"
+import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
 import { createLog, type Log } from "./log.js"
-import {
-  createPendingWrites,
-  directoryResolver,
-  park,
-  sameDirectory,
-  type Execve,
-  type ParkInput,
-  type PendingWrites,
-  type StartDirectory,
-} from "./park.js"
+import { park, type ParkInput } from "./park.js"
+import { createPendingWrites, type PendingWrites } from "./pending.js"
 import { decide } from "./policy.js"
 import { probe } from "./probe.js"
-
-/** Process facts and effects, injected so tests can fake them. */
-export interface NapProcess {
-  now(): number
-  setTimer(run: () => void, ms: number): unknown
-  clearTimer(timer: unknown): void
-  /** The TUI's arguments after the executable and script. */
-  args: string[]
-  execPath: string
-  env(): NodeJS.ProcessEnv
-  start: StartDirectory
-  stdin: unknown
-  readAtime(): number | undefined
-  guardFacts(serverPid: number | undefined): GuardFacts
-  execve: Execve
-}
+import { realProcess, type NapProcess } from "./process.js"
 
 /** Seams for later features: draft capture and the plugin's own storage writes. */
 export interface NapHooks {
@@ -213,37 +190,6 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
   })().catch(error => off("off: runtime error", { error: describe(error) }))
 
   return cleanup
-}
-
-function readAtime(): number | undefined {
-  try {
-    return fstatSync(0).atimeMs
-  } catch {
-    return undefined
-  }
-}
-
-export function realProcess(): NapProcess {
-  return {
-    now: () => Date.now(),
-    setTimer(run, ms) {
-      const timer = setTimeout(run, ms)
-      timer.unref?.()
-      return timer
-    },
-    clearTimer: timer => clearTimeout(timer as ReturnType<typeof setTimeout>),
-    args: process.argv.slice(2),
-    execPath: process.execPath,
-    env: () => process.env,
-    start: { cwd: process.cwd(), pwd: process.env.PWD, sameDirectory },
-    stdin: process.stdin,
-    readAtime,
-    guardFacts: collectGuardFacts,
-    execve(file, argv, env) {
-      // The guards have checked that it exists.
-      process.execve!(file, argv, env)
-    },
-  }
 }
 
 // A plain definition rather than Plugin.define (an identity helper), so the

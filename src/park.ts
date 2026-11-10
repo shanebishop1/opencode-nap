@@ -1,46 +1,8 @@
-import { statSync } from "node:fs"
-import { isAbsolute, resolve } from "node:path"
 import { buildWakeArgs, type Route } from "./argv.js"
+import type { PendingWrites } from "./pending.js"
 import { buildStubExec } from "./stub.js"
 
 export type Execve = (file: string, argv: string[], env: NodeJS.ProcessEnv) => void
-
-/** Where the TUI was started, read at plugin setup. */
-export interface StartDirectory {
-  /** The process's directory. OpenCode has already changed into its directory argument. */
-  cwd: string
-  /** The shell's logical directory at launch, when it was set. */
-  pwd: string | undefined
-  sameDirectory(a: string, b: string): boolean
-}
-
-export function sameDirectory(a: string, b: string): boolean {
-  try {
-    const left = statSync(a)
-    const right = statSync(b)
-    return left.isDirectory() && left.dev === right.dev && left.ino === right.ino
-  } catch {
-    return false
-  }
-}
-
-/**
- * Makes a relative directory argument absolute. The stub runs in the
- * directory OpenCode changed into, so passing the argument as given would
- * resolve it a second time. The shell's logical path is kept when it names
- * the same directory, so a path through a symlink stays one; otherwise the
- * process's directory is used.
- */
-export function directoryResolver(start: StartDirectory): (arg: string) => string {
-  return arg => {
-    if (isAbsolute(arg)) return arg
-    if (start.pwd !== undefined && isAbsolute(start.pwd)) {
-      const logical = resolve(start.pwd, arg)
-      if (start.sameDirectory(logical, start.cwd)) return logical
-    }
-    return start.cwd
-  }
-}
 
 /** Reads OpenCode's route. Throws when its shape is not the expected one. */
 export function toWakeRoute(route: unknown): Route {
@@ -51,27 +13,6 @@ export function toWakeRoute(route: unknown): Route {
   if (type !== "session") return { type: "other" }
   if (typeof sessionID !== "string") throw new Error("session route without a session id")
   return { type: "session", sessionID }
-}
-
-/** The plugin's own storage writes, which must land before the process is replaced. */
-export interface PendingWrites {
-  track<T>(write: Promise<T>): Promise<T>
-  settled(): Promise<void>
-}
-
-export function createPendingWrites(): PendingWrites {
-  const pending = new Set<Promise<unknown>>()
-  return {
-    track(write) {
-      pending.add(write)
-      const forget = () => pending.delete(write)
-      write.then(forget, forget)
-      return write
-    },
-    async settled() {
-      await Promise.allSettled([...pending])
-    },
-  }
 }
 
 export interface ParkInput {
