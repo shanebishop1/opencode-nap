@@ -395,7 +395,8 @@ describe("startNap", () => {
 
   it("cleanup removes the timer and every listener", async () => {
     const { fake, cleanup, listeners } = await start()
-    expect(listeners()).toBe(5)
+    // Idle (3), focus (2) and the draft's focused-editor tracking (1).
+    expect(listeners()).toBe(6)
     expect(fake.timers.size).toBe(1)
     cleanup()
     expect(listeners()).toBe(0)

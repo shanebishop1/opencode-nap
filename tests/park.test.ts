@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { park, toWakeRoute, type ParkInput } from "../src/park.js"
+import { NapDeferral, park, toWakeRoute, type ParkInput } from "../src/park.js"
 import { createPendingWrites } from "../src/pending.js"
 import { buildStubExec } from "../src/stub.js"
 
@@ -61,6 +61,32 @@ describe("park", () => {
     const parkInput = input({ beforeNap: async () => ({ EXTRA: "yes" }) })
     await park(parkInput)
     expect(parkInput.calls[0][2]).toEqual({ PATH: "/usr/bin", EXTRA: "yes" })
+  })
+
+  it("skips with the reason a beforeNap deferral gives", async () => {
+    const parkInput = input({ beforeNap: () => new NapDeferral("cannot read the draft") })
+    expect(await park(parkInput)).toEqual({ status: "skipped", reason: "cannot read the draft" })
+    expect(parkInput.calls).toHaveLength(0)
+  })
+
+  it("runs beforeNap after the pending writes and before the last due check", async () => {
+    const order: string[] = []
+    const parkInput = input({
+      pending: { track: write => write, settled: async () => {
+        order.push("settled")
+        return true
+      } },
+      beforeNap: () => {
+        order.push("beforeNap")
+        return undefined
+      },
+      stillDue: () => {
+        order.push("stillDue")
+        return true
+      },
+    })
+    await park(parkInput)
+    expect(order).toEqual(["settled", "beforeNap", "stillDue"])
   })
 
   it("waits for pending writes, then checks the nap is still due", async () => {

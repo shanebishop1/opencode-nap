@@ -15,6 +15,11 @@ export function toWakeRoute(route: unknown): Route {
   return { type: "session", sessionID }
 }
 
+/** Returned by beforeNap to skip this nap; the plugin tries again later. */
+export class NapDeferral {
+  constructor(readonly reason: string) {}
+}
+
 export interface ParkInput {
   route: unknown
   args: string[]
@@ -24,14 +29,16 @@ export interface ParkInput {
   /** The session's title for the nap card. */
   title: (sessionID: string) => unknown
   pending: PendingWrites
-  /** Runs last before the exec; returns extra environment for the woken TUI. */
-  beforeNap?: () => Promise<Record<string, string> | undefined> | Record<string, string> | undefined
+  /** Runs once the storage writes have landed; returns extra environment for the woken TUI, or a deferral. */
+  beforeNap?: () => Promise<BeforeNapResult> | BeforeNapResult
   /** Checked after every wait; false when input arrived or the nap was deferred meanwhile. */
   stillDue: () => boolean
   /** Called just before the exec. */
   onExec?: () => void
   execve: Execve
 }
+
+export type BeforeNapResult = Record<string, string> | NapDeferral | undefined
 
 export type ParkResult =
   | { status: "skipped"; reason: string }
@@ -44,8 +51,9 @@ export async function park(input: ParkInput): Promise<ParkResult> {
   if (!wake.ok) return { status: "skipped", reason: `cannot build the wake command line: ${wake.reason}` }
 
   const title = route.type === "session" ? input.title(route.sessionID) : undefined
-  const extraEnv = await input.beforeNap?.()
   if (!(await input.pending.settled())) return { status: "skipped", reason: "the plugin's storage writes took too long" }
+  const extraEnv = await input.beforeNap?.()
+  if (extraEnv instanceof NapDeferral) return { status: "skipped", reason: extraEnv.reason }
   if (!input.stillDue()) return { status: "skipped", reason: "no longer due after waiting" }
 
   const stub = buildStubExec({

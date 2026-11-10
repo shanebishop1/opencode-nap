@@ -2,17 +2,18 @@ import type { Plugin } from "@opencode/plugin/tui"
 import { buildWakeArgs } from "./argv.js"
 import { parseOptions } from "./config.js"
 import { directoryResolver } from "./directory.js"
+import { createDraftCarry, probeDraft, restoreDraft, type DraftCarry } from "./draft.js"
 import { createFocusSource, type FocusSource } from "./focus.js"
 import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
 import { createLog, type Log } from "./log.js"
-import { park, type ParkInput } from "./park.js"
+import { NapDeferral, park, type ParkInput } from "./park.js"
 import { createPendingWrites, type PendingWrites } from "./pending.js"
 import { decide } from "./policy.js"
 import { probe } from "./probe.js"
 import { realProcess, type NapProcess } from "./process.js"
 
-/** Seams for later features: draft capture and the plugin's own storage writes. */
+/** Seams for later features: extra work before the exec, after the draft is stored, and the plugin's own storage writes. */
 export interface NapHooks {
   beforeNap?: ParkInput["beforeNap"]
   pending?: PendingWrites
@@ -26,6 +27,14 @@ const TERMINAL_HANDED_OFF = "the terminal is handed to another program"
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
+
+const rendererOf = (context: unknown): unknown => {
+  try {
+    return isRecord(context) ? context.renderer : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Runs the plugin for one TUI and returns its cleanup. Every way of turning
@@ -54,9 +63,29 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     log.once(message, detail)
     release()
   }
+  let stopRestore = () => {}
   const cleanup = () => {
     state = "off"
+    stopRestore()
     release()
+  }
+
+  // Taken first, so the hand-over variable is gone however the plugin turns
+  // out, and restored whatever the options say now: it is the user's text.
+  try {
+    const text = proc.drafts.take()
+    if (text !== undefined) {
+      stopRestore = restoreDraft({
+        text,
+        renderer: rendererOf(context),
+        now: proc.now,
+        setTimer: proc.setTimer,
+        clearTimer: proc.clearTimer,
+        log,
+      })
+    }
+  } catch (error) {
+    log.once("draft not restored", { reason: describe(error) })
   }
 
   const parsed = parseOptions(rawOptions)
@@ -69,6 +98,11 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     off("refused", { reason: "disabled in options" })
     return cleanup
   }
+  try {
+    proc.drafts.cleanStale()
+  } catch {
+    // Left for the next start.
+  }
 
   const probed = probe(context, proc.stdin)
   if (!probed.ok) {
@@ -76,6 +110,23 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     return cleanup
   }
   const { host, stdin } = probed
+
+  let carry: DraftCarry | undefined
+  if (options.carryDraft) {
+    const missing = probeDraft(host.renderer)
+    // Not a reason to turn off: each nap is skipped until the draft can be read.
+    if (missing) log.once("draft unavailable: missing OpenCode internal", { name: missing })
+    const created = createDraftCarry({ renderer: host.renderer, files: proc.drafts })
+    carry = created
+    disposers.push(() => created.dispose())
+  }
+  const beforeNap = async () => {
+    const draftEnv = carry?.capture()
+    if (draftEnv instanceof NapDeferral) return draftEnv
+    const extra = await hooks.beforeNap?.()
+    if (extra instanceof NapDeferral) return extra
+    return draftEnv || extra ? { ...draftEnv, ...extra } : undefined
+  }
 
   const resolveDirectory = directoryResolver(proc.start)
   const pending = hooks.pending ?? createPendingWrites()
@@ -107,7 +158,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
         env: proc.env(),
         title: sessionID => host.data.session.get(sessionID)?.title,
         pending,
-        beforeNap: hooks.beforeNap,
+        beforeNap,
         stillDue: () => state === "napping" && decideNow().action === "nap",
         onExec: () => log.write("napping", { rule, route }),
         execve: proc.execve,
@@ -115,6 +166,9 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     } catch (error) {
       off("off: runtime error", { error: describe(error) })
       return
+    } finally {
+      // Still here, so the draft was never handed over.
+      carry?.discard()
     }
     if (state !== "napping") return
     if (result.status === "exec-failed") {

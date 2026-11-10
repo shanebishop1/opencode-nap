@@ -1,3 +1,4 @@
+import type { DraftFiles } from "../src/draft.js"
 import type { GuardFacts } from "../src/guards.js"
 import type { Log } from "../src/log.js"
 import type { NapProcess } from "../src/process.js"
@@ -48,9 +49,43 @@ export function fakeLog(): Log & { entries: LogEntry[] } {
 export const SESSION_ID = "ses_abc"
 export const SERVER_URL = "http://127.0.0.1:4096"
 
-/** A TUI context with every internal the plugin uses. */
+export const PROMPT_TRAITS = { owner: "opencode", role: "prompt" }
+
+/** An OpenTUI edit buffer; OpenCode's session prompt unless other traits are given. */
+export function fakeEditor(text = "", traits: unknown = { ...PROMPT_TRAITS }) {
+  const editor = {
+    text,
+    traits,
+    isDestroyed: false,
+    cursor: text.length,
+    get plainText(): string {
+      return editor.text
+    },
+    setText(value: string) {
+      editor.text = value
+      editor.cursor = 0
+    },
+    gotoBufferEnd() {
+      editor.cursor = editor.text.length
+    },
+  }
+  return editor
+}
+
+export type FakeEditor = ReturnType<typeof fakeEditor>
+
+/** A TUI context with every internal the plugin uses; the empty prompt is focused. */
 export function fakeContext(stdin: FakeEmitter) {
-  const renderer = Object.assign(new FakeEmitter(), { keyInput: new FakeEmitter(), stdin, controlState: "auto_started" as unknown })
+  const prompt = fakeEditor()
+  const renderer = Object.assign(new FakeEmitter(), {
+    keyInput: new FakeEmitter(),
+    stdin,
+    controlState: "auto_started" as unknown,
+    currentFocusedEditor: prompt as unknown,
+    /** Editors in the renderable tree. */
+    mounted: [prompt] as unknown[],
+    root: { getChildren: (): unknown[] => renderer.mounted },
+  })
   const context = {
     options: {},
     route: { type: "session", sessionID: SESSION_ID } as unknown,
@@ -60,6 +95,7 @@ export function fakeContext(stdin: FakeEmitter) {
     client: { server: { info: async () => ({ pid: context.serverPid, version: "2.2.4" }) } },
     data: { session: { get: (sessionID: string) => (sessionID === SESSION_ID ? { title: context.title } : undefined) } },
     renderer,
+    prompt,
   }
   return context
 }
@@ -79,7 +115,7 @@ export const safeFacts: GuardFacts = {
 type ExecCall = { file: string; argv: string[]; env: NodeJS.ProcessEnv }
 
 /** A process with a manual clock and timers, and an execve that records its calls. */
-export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardFacts> } = {}) {
+export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardFacts>; drafts?: DraftFiles } = {}) {
   let now = 1_700_000_000_000
   let atime: number | undefined = now - 60_000
   let nextTimer = 1
@@ -112,6 +148,7 @@ export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardF
       execs.push({ file, argv, env })
       if (state.execveError) throw state.execveError
     },
+    drafts: overrides.drafts ?? noDrafts,
   }
 
   return {
@@ -139,6 +176,16 @@ export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardF
       await settle()
     },
   }
+}
+
+/** No draft handed over, and none stored. */
+export const noDrafts: DraftFiles = {
+  take: () => undefined,
+  save: () => {
+    throw new Error("unexpected draft")
+  },
+  discard: () => {},
+  cleanStale: () => {},
 }
 
 export const settle = () => new Promise<void>(done => setTimeout(done, 0))
