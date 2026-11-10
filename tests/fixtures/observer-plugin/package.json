@@ -1,0 +1,8 @@
+{
+  "name": "nap-e2e-observer",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tui": "./tui.js"
+  }
+}

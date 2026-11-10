@@ -1,5 +1,5 @@
 import { rmSync } from "fs"
-import { mkdir, mkdtemp, rm, writeFile } from "fs/promises"
+import { cp, mkdir, mkdtemp, rm, writeFile } from "fs/promises"
 import { randomBytes } from "crypto"
 import { tmpdir } from "os"
 import { join, resolve } from "path"
@@ -131,8 +131,15 @@ export async function writeCliConfig(scratch: Scratch, plugins: unknown[]): Prom
 
 export const installedPackage = (scratch: Scratch): string => join(scratch.project, "node_modules", "opencode-nap")
 
-const run = async (scratch: Scratch, name: string, command: string[]): Promise<PtyProcess> => {
-  const pty = await startPty({ command, env: scratch.env, cwd: scratch.project, outputFile: join(scratch.root, `${name}.out`) })
+export type RunOptions = { cwd?: string; env?: Record<string, string> }
+
+const run = async (scratch: Scratch, name: string, command: string[], options: RunOptions = {}): Promise<PtyProcess> => {
+  const pty = await startPty({
+    command,
+    env: options.env ?? scratch.env,
+    cwd: options.cwd ?? scratch.project,
+    outputFile: join(scratch.root, `${name}.out`),
+  })
   tracked.add(pty)
   return pty
 }
@@ -167,6 +174,54 @@ export async function createSession(scratch: Scratch, url: string): Promise<stri
 /** Runs the TUI against the private server. It never receives input. */
 export const startTui = (scratch: Scratch, url: string, sessionID: string): Promise<PtyProcess> =>
   run(scratch, "tui", [scratch.binary, "--server", url, "-s", sessionID, scratch.project])
+
+/**
+ * Runs the TUI with the given arguments under its own output file. The
+ * arguments must name the private server with --server: only a test that has
+ * proved it runs in a private network namespace may leave it out.
+ */
+export const startTuiWith = (scratch: Scratch, name: string, args: string[], options: RunOptions = {}): Promise<PtyProcess> =>
+  run(scratch, name, [scratch.binary, ...args], options)
+
+/** Runs any command under the harness, so cleanup stops it with the rest. */
+export const startCommand = (scratch: Scratch, name: string, command: string[], options: RunOptions = {}): Promise<PtyProcess> =>
+  run(scratch, name, command, options)
+
+/** Replaces the server config. The server reads it when it starts. */
+export async function writeServerConfig(scratch: Scratch, config: Record<string, unknown>): Promise<void> {
+  await writeFile(scratch.env.OPENCODE_CONFIG, JSON.stringify({ $schema: "https://opencode.ai/config.json", ...config }, null, 2))
+}
+
+/** Calls the private server's API and returns the parsed JSON body. Throws on an HTTP error. */
+export async function callApi(scratch: Scratch, url: string, method: string, path: string, body?: unknown): Promise<any> {
+  const response = await fetch(`${url}${path}`, {
+    method,
+    headers: apiHeaders(scratch),
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  })
+  const text = await response.text()
+  if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}: ${text.slice(0, 2000)}`)
+  return text ? JSON.parse(text) : undefined
+}
+
+const fixtures = resolve(import.meta.dir, "..", "fixtures")
+
+/** Copies the observer plugin into the scratch directory and returns its path for cli.json. */
+export async function installObserver(scratch: Scratch): Promise<string> {
+  const directory = join(scratch.root, "observer-plugin")
+  await cp(join(fixtures, "observer-plugin"), directory, { recursive: true })
+  return directory
+}
+
+/** Starts the fake OpenAI-compatible provider on a free loopback port and returns its URL. */
+export async function startProvider(scratch: Scratch, logFile: string, slow: { chunks: number; delayMs: number }): Promise<{ process: PtyProcess; url: string }> {
+  const provider = await run(scratch, "provider", [
+    process.execPath, join(fixtures, "local-openai-server.ts"), "0", logFile, String(slow.chunks), String(slow.delayMs),
+  ])
+  const [, url] = await provider.waitFor(/READY (http:\/\/127\.0\.0\.1:\d+)/, 30_000)
+  return { process: provider, url }
+}
 
 type ProcessInfo = { pid: number; ppid: number; args: string }
 

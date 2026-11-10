@@ -6,7 +6,7 @@ const driver = resolve(import.meta.dir, "pty_driver.py")
 // Resolved with the caller's environment: a version-manager shim on PATH may
 // not work under the isolated HOME the command runs with.
 let python = ""
-const pythonPath = (): string => {
+export const pythonPath = (): string => {
   if (!python) {
     const result = Bun.spawnSync(["python3", "-c", "import sys; print(sys.executable)"])
     python = result.stdout.toString().trim()
