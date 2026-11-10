@@ -1,5 +1,6 @@
 import { fstatSync } from "node:fs"
 import { sameDirectory, type StartDirectory } from "./directory.js"
+import { draftFiles, type DraftFiles } from "./draft-file.js"
 import { collectGuardFacts, type GuardFacts } from "./guards.js"
 import type { Execve } from "./park.js"
 
@@ -17,6 +18,7 @@ export interface NapProcess {
   readAtime(): number | undefined
   guardFacts(serverPid: number | undefined): GuardFacts
   execve: Execve
+  drafts: DraftFiles
 }
 
 function readAtime(): number | undefined {
@@ -43,6 +45,7 @@ export function realProcess(): NapProcess {
     stdin: process.stdin,
     readAtime,
     guardFacts: collectGuardFacts,
+    drafts: draftFiles(),
     execve(file, argv, env) {
       // The guards have checked that it exists.
       process.execve!(file, argv, env)

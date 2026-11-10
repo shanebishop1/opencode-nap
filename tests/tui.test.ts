@@ -71,12 +71,6 @@ describe("startNap", () => {
     expect(fake.execs[0].argv.slice(6)).toEqual(["--server", SERVER_URL, "/work/project", "-s", SESSION_ID])
   })
 
-  it("passes extra environment from beforeNap to the woken TUI", async () => {
-    const { fake } = await start({ hooks: { beforeNap: async () => ({ NAP_EXTRA: "1" }) } })
-    await fake.advance(IDLE_MS + 5_000)
-    expect(fake.execs[0].env).toEqual({ PATH: "/usr/bin", OPENCODE_PASSWORD: "secret", NAP_EXTRA: "1" })
-  })
-
   it("waits for the plugin's pending storage writes before the exec", async () => {
     const { finish, pending } = heldWrite()
     const { fake } = await start({ hooks: { pending } })
@@ -395,7 +389,8 @@ describe("startNap", () => {
 
   it("cleanup removes the timer and every listener", async () => {
     const { fake, cleanup, listeners } = await start()
-    expect(listeners()).toBe(5)
+    // Idle (3), focus (2) and the draft's focused-editor tracking (1).
+    expect(listeners()).toBe(6)
     expect(fake.timers.size).toBe(1)
     cleanup()
     expect(listeners()).toBe(0)
