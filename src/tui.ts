@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode/plugin/tui"
 import { buildWakeArgs } from "./argv.js"
 import { parseOptions } from "./config.js"
 import { directoryResolver } from "./directory.js"
-import { createDraftCarry, probeDraft, restoreDraft } from "./draft.js"
+import { createDraftCarry, restoreDraft } from "./draft.js"
 import { createFocusSource, type FocusSource } from "./focus.js"
 import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
@@ -11,6 +11,7 @@ import { park } from "./park.js"
 import { createPendingWrites, type PendingWrites } from "./pending.js"
 import { decide } from "./policy.js"
 import { probe } from "./probe.js"
+import { probePrompt } from "./prompt.js"
 import { realProcess, type NapProcess } from "./process.js"
 
 /** Seam for a later feature: the plugin's own storage writes. */
@@ -112,7 +113,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
 
   const carry = options.carryDraft ? createDraftCarry({ renderer: host.renderer, files: proc.drafts }) : undefined
   if (carry) {
-    const missing = probeDraft(host.renderer)
+    const missing = probePrompt(host.renderer)
     // Not a reason to turn off: each nap is skipped until the draft can be read.
     if (missing) log.once("draft unavailable: missing OpenCode internal", { name: missing })
     disposers.push(() => carry.dispose())

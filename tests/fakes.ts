@@ -1,4 +1,4 @@
-import type { DraftFiles } from "../src/draft.js"
+import type { DraftFiles } from "../src/draft-file.js"
 import type { GuardFacts } from "../src/guards.js"
 import type { Log } from "../src/log.js"
 import type { NapProcess } from "../src/process.js"
@@ -98,6 +98,19 @@ export function fakeContext(stdin: FakeEmitter) {
     prompt,
   }
   return context
+}
+
+/** A renderer whose empty prompt is focused and mounted. */
+export const fakeRenderer = () => {
+  const context = fakeContext(new FakeEmitter())
+  return Object.assign(context.renderer, { prompt: context.prompt })
+}
+
+/** The renderer without the internal the prompt is found through. */
+export const withoutCurrentEditor = (r: object) => {
+  const copy: Record<string, unknown> = { ...r }
+  delete copy.currentFocusedEditor
+  return copy
 }
 
 export const safeFacts: GuardFacts = {

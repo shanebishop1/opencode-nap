@@ -19,8 +19,7 @@ import { dirname, join, resolve } from "node:path"
 /** Environment variable that hands the next draft's file path to the plugin. */
 export const DRAFT_ENV = "OPENCODE_NAP_DRAFT_FILE"
 
-const DAY_MS = 24 * 60 * 60 * 1000
-const STALE_MS = 7 * DAY_MS
+const STALE_MS = 7 * 24 * 60 * 60 * 1000
 // Absent on Windows, where the file mode and symlink checks are weaker anyway.
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0
 const NONBLOCK = constants.O_NONBLOCK ?? 0
@@ -41,8 +40,8 @@ const isUserDir = (dir: string): boolean => {
  * Per-user directory for drafts. Drafts are short-lived and may hold private
  * text, so they live in a directory only the current user can enter.
  */
-export function draftDir(tmp?: string): string {
-  return join(tmp ?? tmpdir(), `opencode-nap-${currentUid() ?? "user"}`)
+export function draftDir(tmp: string = tmpdir()): string {
+  return join(tmp, `opencode-nap-${currentUid() ?? "user"}`)
 }
 
 const ensurePrivateDir = (dir: string): void => {
@@ -53,12 +52,8 @@ const ensurePrivateDir = (dir: string): void => {
   chmodSync(dir, 0o700)
 }
 
-/**
- * Stores draft text in a new, owner-only file and returns its absolute path.
- * Empty text is not a draft and writes nothing. Errors never include the text.
- */
-export function writeDraft(text: string, dir: string = draftDir()): string | undefined {
-  if (text === "") return undefined
+// Errors never include the text.
+const writeDraft = (text: string, dir: string): string => {
   ensurePrivateDir(dir)
   const path = resolve(dir, randomUUID())
   const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
@@ -90,51 +85,68 @@ const readRegularFile = (path: string): string | undefined => {
   }
 }
 
-/**
- * Reads a draft and deletes its file, so the text lives on disk only until the
- * plugin takes it. Refused or missing paths give undefined; a refused path inside
- * the draft directory is still unlinked, and a path anywhere else is left alone.
- */
-export function readAndDeleteDraft(path: string, dir: string = draftDir()): string | undefined {
-  if (dirname(resolve(path)) !== resolve(dir) || !isUserDir(dir)) return undefined
-  const text = readRegularFile(path)
+const unlinkIfPresent = (path: string): void => {
   try {
     unlinkSync(path)
   } catch {
     // Already gone or not removable; there is nothing more to do.
   }
-  return text
-}
-
-/** Returns the draft path from the environment and removes the variable so it is used once. */
-export function takeDraftPath(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const path = env[DRAFT_ENV]
-  delete env[DRAFT_ENV]
-  return path || undefined
 }
 
 /**
- * Deletes draft files left behind by a crash, judged by modification time.
- * Returns how many were removed. Never throws; a missing directory counts as zero.
+ * Reads a draft and deletes its file, so the text lives on disk only until the
+ * plugin takes it. A refused path inside the draft directory is still deleted;
+ * a path anywhere else is left alone.
  */
-export function cleanStaleDrafts(dir: string = draftDir(), now: number = Date.now(), maxAgeMs: number = STALE_MS): number {
-  let removed = 0
-  try {
-    if (!isUserDir(dir)) return 0
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isFile()) continue
-      const file = join(dir, entry.name)
-      try {
-        if (now - lstatSync(file).mtimeMs > maxAgeMs) {
-          unlinkSync(file)
-          removed++
-        }
-      } catch {
-        // Vanished or not removable; try the rest.
-      }
+const readAndDeleteDraft = (path: string, dir: string): string | undefined => {
+  if (dirname(resolve(path)) !== resolve(dir) || !isUserDir(dir)) return undefined
+  const text = readRegularFile(path)
+  unlinkIfPresent(path)
+  return text
+}
+
+const cleanStaleDrafts = (dir: string): void => {
+  if (!isUserDir(dir)) return
+  const now = Date.now()
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const file = join(dir, entry.name)
+    try {
+      if (now - lstatSync(file).mtimeMs > STALE_MS) unlinkSync(file)
+    } catch {
+      // Vanished or not removable; try the rest.
     }
-  } catch {
-    // Missing or unreadable directory: nothing to clean.
   }
-  return removed
+}
+
+/** Draft files, injected so tests can keep them out of the real temp directory and environment. */
+export interface DraftFiles {
+  /**
+   * Takes the draft left by the nap that started this TUI and deletes its file
+   * and the hand-over variable. Undefined when there was none; throws when the
+   * file could not be read.
+   */
+  take(): string | undefined
+  /** Stores a draft in a new, owner-only file and returns its path. */
+  save(text: string): string
+  /** Deletes a stored draft that was never handed over. */
+  discard(path: string): void
+  /** Deletes draft files older than 7 days, left by naps that never woke. Throws when the directory cannot be read. */
+  cleanStale(): void
+}
+
+export function draftFiles(env: NodeJS.ProcessEnv = process.env, dir: string = draftDir()): DraftFiles {
+  return {
+    take() {
+      const path = env[DRAFT_ENV]
+      delete env[DRAFT_ENV]
+      if (!path) return undefined
+      const text = readAndDeleteDraft(path, dir)
+      if (text === undefined) throw new Error("the draft file could not be read")
+      return text
+    },
+    save: text => writeDraft(text, dir),
+    discard: unlinkIfPresent,
+    cleanStale: () => cleanStaleDrafts(dir),
+  }
 }

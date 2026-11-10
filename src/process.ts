@@ -1,6 +1,6 @@
 import { fstatSync } from "node:fs"
 import { sameDirectory, type StartDirectory } from "./directory.js"
-import { draftFiles, type DraftFiles } from "./draft.js"
+import { draftFiles, type DraftFiles } from "./draft-file.js"
 import { collectGuardFacts, type GuardFacts } from "./guards.js"
 import type { Execve } from "./park.js"
 
