@@ -11,16 +11,23 @@ export interface FocusSource {
   dispose(): void
 }
 
-/** Terminal focus from the renderer's "focus" and "blur" events; unknown until the first one. */
-export function createFocusSource(input: { renderer: Emitter; now: () => number }): FocusSource {
+/**
+ * Terminal focus from the renderer's "focus" and "blur" events; unknown until
+ * the first one. `onChange` runs after each change, not for a repeated event.
+ */
+export function createFocusSource(input: { renderer: Emitter; now: () => number; onChange?: () => void }): FocusSource {
   let current: FocusState = { focus: "unknown", unfocusedSince: undefined }
 
   const onFocus = () => {
+    if (current.focus === "focused") return
     current = { focus: "focused", unfocusedSince: undefined }
+    input.onChange?.()
   }
   const onBlur = () => {
     // A repeated blur keeps the time focus was first lost.
-    if (current.focus !== "unfocused") current = { focus: "unfocused", unfocusedSince: input.now() }
+    if (current.focus === "unfocused") return
+    current = { focus: "unfocused", unfocusedSince: input.now() }
+    input.onChange?.()
   }
 
   input.renderer.on("focus", onFocus)

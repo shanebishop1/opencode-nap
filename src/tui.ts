@@ -126,6 +126,15 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     schedule(SKIP_RETRY_MS)
   }
 
+  // Checks again on the next turn, not at once: the renderer reports focus
+  // while handling the input chunk, before the idle source has seen it, so
+  // checking now would count the chunk's access-time bump as input.
+  function recheck() {
+    if (state !== "running") return
+    if (timer !== undefined) proc.clearTimer(timer)
+    schedule(0)
+  }
+
   function tick() {
     timer = undefined
     if (state !== "running") return
@@ -175,7 +184,8 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
           keyInput: host.renderer.keyInput,
           stdin,
         }),
-        focus: createFocusSource({ renderer: host.renderer, now: proc.now }),
+        // A focus change can make a rule due sooner than the next check.
+        focus: createFocusSource({ renderer: host.renderer, now: proc.now, onChange: recheck }),
       }
       idle = sources.idle
       focus = sources.focus
