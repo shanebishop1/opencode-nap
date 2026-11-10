@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "fs"
+import { spawnSync } from "child_process"
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "fs"
 import { mkdtemp, rm } from "fs/promises"
 import { tmpdir } from "os"
 import { join } from "path"
@@ -111,6 +112,24 @@ describe("draft file", () => {
     expect(readAndDeleteDraft(outside, dir)).toBeUndefined()
     expect(readAndDeleteDraft(`${dir}/../important.txt`, dir)).toBeUndefined()
     expect(readFileSync(outside, "utf8")).toBe("keep me")
+  })
+
+  it.skipIf(process.platform === "win32")("tightens an existing draft directory to 0700", () => {
+    const dir = join(tmp, "drafts")
+    mkdirSync(dir)
+    chmodSync(dir, 0o755)
+    write("secret", dir)
+    expect(mode(dir)).toBe(0o700)
+  })
+
+  it.skipIf(process.platform === "win32")("refuses a FIFO in place of the draft without hanging", () => {
+    const dir = join(tmp, "drafts")
+    mkdirSync(dir)
+    const fifo = join(dir, "fifo")
+    expect(spawnSync("mkfifo", [fifo]).status).toBe(0)
+
+    expect(readAndDeleteDraft(fifo, dir)).toBeUndefined()
+    expect(existsSync(fifo)).toBe(false)
   })
 
   it.skipIf(process.platform === "win32")("refuses a symlinked draft directory", () => {
