@@ -1,10 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readdirSync, readlinkSync } from "fs"
-import { cleanup, cliVersion, createScratch, startCommand, type Scratch } from "./e2e/harness.js"
-import { NapRun, processTree, readArgv, SPACE, waitUntil, Watch } from "./e2e/nap-run.js"
+import { cleanup, cliVersion, createScratch, e2eEnabled, startCommand, type Scratch } from "./e2e/harness.js"
+import { NapRun, SPACE, waitUntil, Watch } from "./e2e/nap-run.js"
+import { processTree, readArgv } from "./e2e/processes.js"
 import { pythonPath } from "./e2e/pty.js"
-
-const enabled = process.env.NAP_E2E === "1"
 
 // The default service listens on a fixed port (49374, or 49375 for local
 // builds) and can replace a running service, so a TUI without --server only
@@ -55,9 +54,9 @@ function findIsolation(): Isolation {
   return { skip: "neither bwrap --unshare-net nor unshare -rn can create a private network namespace here (unprivileged user namespaces are restricted)" }
 }
 
-const isolation: Isolation = enabled ? findIsolation() : { skip: "NAP_E2E is not set" }
+const isolation: Isolation = e2eEnabled ? findIsolation() : { skip: "NAP_E2E is not set" }
 const runnable = "prefix" in isolation
-if (enabled && !runnable) console.log(`skipping the default-service test: ${"skip" in isolation ? isolation.skip : ""}`)
+if (e2eEnabled && !runnable) console.log(`skipping the default-service test: ${"skip" in isolation ? isolation.skip : ""}`)
 
 const netns = (pid: number | "self"): string | undefined => {
   try {
@@ -86,10 +85,7 @@ describe.skipIf(!runnable)(`OpenCode ${cliVersion}: the default service, in a pr
     scratch = await createScratch()
   }, 300_000)
 
-  afterAll(async () => {
-    const survivors = await cleanup()
-    if (survivors.length) throw new Error(`processes outlived the test and were killed:\n${survivors.join("\n")}`)
-  }, 60_000)
+  afterAll(cleanup, 60_000)
 
   it("ac-both-servers: a TUI on the default service (no --server) naps and wakes", async () => {
     if (!("prefix" in isolation)) throw new Error("unreachable")

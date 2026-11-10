@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import type { GuardFacts } from "../src/guards.js"
 import { createPendingWrites } from "../src/pending.js"
 import { buildStubExec } from "../src/stub.js"
 import { startNap, type NapHooks } from "../src/tui.js"
@@ -9,7 +10,7 @@ const options = { idleMinutes: IDLE_MS / 60_000 }
 
 type Setup = {
   args?: string[]
-  facts?: Parameters<typeof fakeProcess>[0]["facts"]
+  facts?: Partial<GuardFacts>
   options?: unknown
   edit?: (context: ReturnType<typeof fakeContext>) => void
   hooks?: NapHooks

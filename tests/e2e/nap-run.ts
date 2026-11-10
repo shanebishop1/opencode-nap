@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "fs/promises"
 import { join } from "path"
-import { $ } from "bun"
 import { installedPackage, installObserver, writeCliConfig, type Scratch } from "./harness.js"
+import { processTree } from "./processes.js"
 import { stripEscapes, type PtyProcess } from "./pty.js"
 
 export const CARD = /Napping to save memory\. Press any key or click to wake\./g
@@ -12,6 +12,9 @@ export const CLICK = "\x1b[<0;20;10M\x1b[<0;20;10m"
 export const sleep = (milliseconds: number) => new Promise(done => setTimeout(done, milliseconds))
 
 export type Entry = Record<string, any>
+
+// A napping window's process is the stub, `sh -c <script> ...`.
+const isStub = (commandLine: string): boolean => /^sh -c /.test(commandLine)
 
 /** What the TUI drew after the given offset in its raw output, as plain text. */
 export const stripEscapesSince = (tui: PtyProcess, offset: number): string => stripEscapes(tui.output().slice(offset))
@@ -33,47 +36,6 @@ export async function waitUntil<T>(read: () => Promise<T | undefined> | T | unde
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}\n${context()}`)
     await sleep(50)
   }
-}
-
-type Row = { pid: number; ppid: number; rss: number; args: string }
-
-const processRows = async (): Promise<Row[]> =>
-  (await $`ps -A -o pid=,ppid=,rss=,args=`.quiet().text())
-    .split("\n")
-    .map(line => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
-    .filter((match): match is RegExpMatchArray => match !== null)
-    .map(match => ({ pid: Number(match[1]), ppid: Number(match[2]), rss: Number(match[3]), args: match[4] }))
-
-/** A process and its descendants: their resident memory and the leader's command line. */
-export async function processTree(pid: number): Promise<{ leader: string; rssKiB: number; count: number; members: Row[] }> {
-  const rows = await processRows()
-  const family = new Set([pid])
-  for (let grew = true; grew;) {
-    grew = false
-    for (const row of rows) {
-      if (family.has(row.ppid) && !family.has(row.pid)) {
-        family.add(row.pid)
-        grew = true
-      }
-    }
-  }
-  const members = rows.filter(row => family.has(row.pid))
-  return {
-    leader: rows.find(row => row.pid === pid)?.args ?? "",
-    rssKiB: members.reduce((total, row) => total + row.rss, 0),
-    count: members.length,
-    members,
-  }
-}
-
-export async function readArgv(pid: number): Promise<string[]> {
-  return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter(Boolean)
-}
-
-/** The environment a process was started with. Never print the values: they include the server password. */
-export async function readEnviron(pid: number): Promise<Map<string, string>> {
-  const entries = (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0").filter(Boolean)
-  return new Map(entries.map(entry => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]))
 }
 
 /** The plugin config of one TUI run: opencode-nap with its own debug log, and the observer plugin. */
@@ -133,7 +95,7 @@ export class NapRun {
 
   async assertNapping(): Promise<void> {
     const tree = await processTree(this.pid)
-    if (!/^sh -c /.test(tree.leader)) throw new Error(`expected the window to be napping: ${tree.leader}\n${await this.context()}`)
+    if (!isStub(tree.leader)) throw new Error(`expected the window to be napping: ${tree.leader}\n${await this.context()}`)
   }
 
   /** Waits for the plugin's nth "watching" line and returns when it was seen. */
@@ -158,7 +120,7 @@ export class NapRun {
     const card = await waitUntil(() => (this.cards() > this.cardsSeen ? Date.now() : undefined), timeoutMs, "the nap card")
     const tree = await waitUntil(async () => {
       const found = await processTree(this.pid)
-      return /^sh -c /.test(found.leader) && found.count >= 2 ? found : undefined
+      return isStub(found.leader) && found.count >= 2 ? found : undefined
     }, 5_000, "the stub and its reader")
     this.cardsSeen = this.cards()
     return { at: card, rssKiB: tree.rssKiB, count: tree.count }
@@ -167,7 +129,7 @@ export class NapRun {
   /** Sends a wake key or click to a window proved to be napping; returns when it was sent. */
   async wake(input: string): Promise<number> {
     const tree = await processTree(this.pid)
-    if (!/^sh -c /.test(tree.leader) || this.cards() !== this.cardsSeen) {
+    if (!isStub(tree.leader) || this.cards() !== this.cardsSeen) {
       throw new Error(`refusing to type into a window that is not napping: ${tree.leader}`)
     }
     if (input !== SPACE && input !== CLICK) throw new Error("only Space or a click may wake a window")

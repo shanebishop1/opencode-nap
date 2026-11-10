@@ -7,16 +7,16 @@ import {
   cliVersion,
   createScratch,
   createSession,
+  e2eEnabled,
   startProvider,
   startServer,
   startTuiWith,
+  stopTuis,
   writeServerConfig,
   type Scratch,
 } from "./e2e/harness.js"
 import { NapRun, readJsonLines, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
 import type { PtyProcess } from "./e2e/pty.js"
-
-const enabled = process.env.NAP_E2E === "1"
 
 const napOptions = { idleMinutes: 0.25 }
 const NAP_TIMEOUT_MS = 40_000
@@ -29,7 +29,6 @@ const QUESTION_DIALOG = /NAP_E2E question: pick one .*Alpha.*Beta.* Type your ow
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
 let providerLog = ""
-const started: PtyProcess[] = []
 
 // Only the local fake provider is allowed. Tool rules live on each agent:
 // shell asks, so a permission prompt appears; the question tool is allowed.
@@ -75,13 +74,12 @@ async function openSession(name: string) {
   const watch = await Watch.configure(scratch, name, napOptions)
   const sessionID = await createSession(scratch, server.url)
   const tui = await startTuiWith(scratch, name, ["--server", server.url, "-s", sessionID, scratch.project])
-  started.push(tui)
   const run = new NapRun(tui, watch)
   const watchingAt = await run.waitForWatching(1)
   return { sessionID, tui, run, watchingAt }
 }
 
-describe.skipIf(!enabled)(`OpenCode ${cliVersion}: runs and prompts survive a nap`, () => {
+describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: runs and prompts survive a nap`, () => {
   beforeAll(async () => {
     scratch = await createScratch()
     providerLog = join(scratch.root, "provider.jsonl")
@@ -90,15 +88,9 @@ describe.skipIf(!enabled)(`OpenCode ${cliVersion}: runs and prompts survive a na
     server = await startServer(scratch)
   }, 300_000)
 
-  // A TUI left running would hot-reload the next test's cli.json.
-  afterEach(async () => {
-    await Promise.all(started.splice(0).map(tui => tui.stop()))
-  }, 60_000)
+  afterEach(stopTuis, 60_000)
 
-  afterAll(async () => {
-    const survivors = await cleanup()
-    if (survivors.length) throw new Error(`processes outlived the test and were killed:\n${survivors.join("\n")}`)
-  }, 60_000)
+  afterAll(cleanup, 60_000)
 
   it("ac-run-continues: a run streaming when its only TUI naps finishes in the server, and all of it shows after wake", async () => {
     const { sessionID, tui, run } = await openSession("stream")

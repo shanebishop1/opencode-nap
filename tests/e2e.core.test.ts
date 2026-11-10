@@ -7,14 +7,15 @@ import {
   cliVersion,
   createScratch,
   createSession,
+  e2eEnabled,
   startServer,
-  startTuiWith,
+  startTuiWith as open,
+  stopTuis,
   type Scratch,
 } from "./e2e/harness.js"
-import { CLICK, NapRun, processTree, readArgv, readEnviron, sleep, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
+import { CLICK, NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
+import { processTree, readArgv, readEnviron } from "./e2e/processes.js"
 import type { PtyProcess } from "./e2e/pty.js"
-
-const enabled = process.env.NAP_E2E === "1"
 
 // 15 s idle, checked at most every 5 s.
 const napOptions = { idleMinutes: 0.25 }
@@ -22,13 +23,6 @@ const NAP_TIMEOUT_MS = 40_000
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
-const started: PtyProcess[] = []
-
-const open = async (...args: Parameters<typeof startTuiWith>): Promise<PtyProcess> => {
-  const tui = await startTuiWith(...args)
-  started.push(tui)
-  return tui
-}
 
 const messagesOf = async (sessionID: string): Promise<any[]> =>
   (await callApi(scratch, server.url, "GET", `/api/session/${sessionID}/message`)).data
@@ -37,22 +31,15 @@ const sessionIDs = async (): Promise<string[]> =>
   (await callApi(scratch, server.url, "GET", `/api/session?directory=${encodeURIComponent(scratch.project)}&limit=100`)).data
     .map((session: { id: string }) => session.id)
 
-
-describe.skipIf(!enabled)(`OpenCode ${cliVersion}: core nap and wake in a real TUI`, () => {
+describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a real TUI`, () => {
   beforeAll(async () => {
     scratch = await createScratch()
     server = await startServer(scratch)
   }, 300_000)
 
-  // A TUI left running would hot-reload the next test's cli.json.
-  afterEach(async () => {
-    await Promise.all(started.splice(0).map(tui => tui.stop()))
-  }, 60_000)
+  afterEach(stopTuis, 60_000)
 
-  afterAll(async () => {
-    const survivors = await cleanup()
-    if (survivors.length) throw new Error(`processes outlived the test and were killed:\n${survivors.join("\n")}`)
-  }, 60_000)
+  afterAll(cleanup, 60_000)
 
   it("ac-idle-nap, ac-wake-key, ac-wake-latency: naps in place under 5 MB; Space wakes it into the same session and never reaches the prompt", async () => {
     const watch = await Watch.configure(scratch, "space", napOptions)
