@@ -8,7 +8,6 @@
 //   state         route, open tabs, the stored value and the prompt's text
 //   tab           opens the session ID in the file as a tab
 //   store         stores the file's text in plugin storage
-//   submit        submits the file's text through the TUI's own prompt
 //   history-back  recalls the previous prompt from history
 //   clear         empties the prompt
 import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs"
@@ -63,13 +62,6 @@ export default {
           draft.value = value
         })
         return { stored: stored.value }
-      },
-      submit: text => {
-        const editor = prompt()
-        if (!editor) return { submitted: false }
-        editor.setText(text)
-        api.keymap.dispatch("prompt.submit")
-        return { submitted: true }
       },
       "history-back": () => {
         api.keymap.dispatch("prompt.history.previous")

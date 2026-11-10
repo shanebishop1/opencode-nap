@@ -211,7 +211,7 @@ export async function installObserver(scratch: Scratch): Promise<string> {
 /** Starts the fake OpenAI-compatible provider on a free loopback port and returns its URL. */
 export async function startProvider(scratch: Scratch, logFile: string, slow: { chunks: number; delayMs: number }): Promise<{ process: PtyProcess; url: string }> {
   const provider = await run(scratch, "provider", [
-    process.execPath, join(fixtures, "local-openai-server.ts"), "0", logFile, String(slow.chunks), String(slow.delayMs),
+    process.execPath, join(fixtures, "local-openai-server.ts"), logFile, String(slow.chunks), String(slow.delayMs),
   ])
   const [, url] = await provider.waitFor(/READY (http:\/\/127\.0\.0\.1:\d+)/, 30_000)
   return { process: provider, url }

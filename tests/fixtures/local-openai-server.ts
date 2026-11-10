@@ -1,7 +1,7 @@
 // A loopback-only fake OpenAI-compatible provider for the end-to-end tests.
 //
-// Usage: bun local-openai-server.ts <port, 0 for any> <log file> [slow chunks] [slow delay ms]
-// Prints "READY <url>" once listening. Every request and stream event is
+// Usage: bun local-openai-server.ts <log file> <slow chunks> <slow delay ms>
+// Listens on a free loopback port and prints "READY <url>". Every request and stream event is
 // appended to the log file as one JSON line.
 //
 // The reply to a request that offers tools depends on the text of the last
@@ -14,15 +14,10 @@ import { appendFileSync } from "fs"
 
 type Json = Record<string, unknown>
 
-const port = Number(process.argv[2] ?? "0")
-const logFile = process.argv[3]
-const slowChunks = Number(process.argv[4] ?? "40")
-const slowDelayMs = Number(process.argv[5] ?? "1000")
+const [logFile, slowChunks, slowDelayMs] = [process.argv[2], Number(process.argv[3]), Number(process.argv[4])]
 let calls = 0
 
-const log = (entry: Json) => {
-  if (logFile) appendFileSync(logFile, `${JSON.stringify({ time: Date.now(), ...entry })}\n`)
-}
+const log = (entry: Json) => appendFileSync(logFile, `${JSON.stringify({ time: Date.now(), ...entry })}\n`)
 
 const asObject = (value: unknown): Json => (typeof value === "object" && value !== null && !Array.isArray(value) ? value as Json : {})
 
@@ -94,7 +89,6 @@ function reply(call: number, mode: string, tool: { name: string; args: Json } | 
           for (let i = 1; i <= slowChunks; i++) {
             if (signal.aborted) throw new Error("client gone")
             chunk({ content: `slow-chunk-${String(i).padStart(3, "0")} ` })
-            if (i % 10 === 0) log({ call, progress: i })
             await sleep(slowDelayMs)
           }
           chunk({ content: "NAP_SLOW_DONE" })
@@ -124,7 +118,7 @@ function reply(call: number, mode: string, tool: { name: string; args: Json } | 
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
-  port,
+  port: 0,
   // A slow stream is quiet between chunks; never time it out.
   idleTimeout: 0,
   async fetch(request) {
