@@ -26,8 +26,9 @@ const SEEN_BEFORE_MS = 250
 const SEEN_AFTER_MS = 1_500
 const SEEN_KEEP_MS = 30_000
 
+// A Buffer is a Uint8Array.
 const toText = (chunk: unknown): string =>
-  typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) || chunk instanceof Uint8Array ? Buffer.from(chunk).toString("latin1") : ""
+  typeof chunk === "string" ? chunk : chunk instanceof Uint8Array ? Buffer.from(chunk).toString("latin1") : ""
 
 /**
  * Input is a key press or paste from the renderer, or a mouse report on the
