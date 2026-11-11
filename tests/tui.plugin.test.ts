@@ -25,7 +25,7 @@ describe("tui plugin", () => {
   })
 
   for (const field of ["options", "debugLogFile"]) {
-    it(`ac-fail-safe: a throwing ${field} getter stops setup without using the host`, () => {
+    it(`ac-fail-safe: a throwing ${field} getter stops setup without using the host`, async () => {
       let hostReads = 0
       const options = {
         get debugLogFile(): undefined { throw new Error("unreadable log option") },
@@ -37,7 +37,7 @@ describe("tui plugin", () => {
         },
         get ui() { hostReads++; throw new Error("setup should have stopped") },
       }
-      const cleanup = plugin.setup(context as unknown as Plugin.Context)
+      const cleanup = await plugin.setup(context as unknown as Plugin.Context)
       expect(typeof cleanup).toBe("function")
       expect(hostReads).toBe(0)
       expect(() => (cleanup as () => void)()).not.toThrow()
@@ -46,7 +46,7 @@ describe("tui plugin", () => {
 
   it("logs that it loaded without dumping its options to the debug log file", async () => {
     const debugLogFile = join(directory, "nap.log")
-    const cleanup = setup({ enabled: true, debugLogFile })
+    const cleanup = await setup({ enabled: true, debugLogFile })
 
     expect(typeof cleanup).toBe("function")
     expect(() => (cleanup as () => void)()).not.toThrow()
@@ -57,7 +57,7 @@ describe("tui plugin", () => {
 
   it("still logs, from the raw options, when the options are invalid", async () => {
     const debugLogFile = join(directory, "nap.log")
-    setup({ idleMinutes: "soon", debugLogFile })
+    await setup({ idleMinutes: "soon", debugLogFile })
 
     const lines = (await readFile(debugLogFile, "utf8")).trim().split("\n").map(line => JSON.parse(line))
     expect(lines.map(line => line.message)).toEqual(["loaded", "off: invalid options"])
@@ -67,7 +67,7 @@ describe("tui plugin", () => {
   it("ac-draft-not-logged: never logs raw option values, even when invalid", async () => {
     const debugLogFile = join(directory, "nap.log")
     const text = "PRIVATE_OPTION_DRAFT_fde2cd"
-    setup({ idleMinutes: text, prompt: text, debugLogFile })
+    await setup({ idleMinutes: text, prompt: text, debugLogFile })
 
     const written = await readFile(debugLogFile, "utf8")
     expect(written).not.toContain(text)
@@ -76,13 +76,13 @@ describe("tui plugin", () => {
 
   it("turns off with one log line in a host without the internals it needs", async () => {
     const debugLogFile = join(directory, "nap.log")
-    setup({ debugLogFile })
+    await setup({ debugLogFile })
 
     const lines = (await readFile(debugLogFile, "utf8")).trim().split("\n").map(line => JSON.parse(line))
     expect(lines.slice(1)).toMatchObject([{ message: "off: missing OpenCode internal", detail: { name: "ui.router.current" } }])
   })
 
-  it("never writes to the terminal", () => {
+  it("never writes to the terminal", async () => {
     const spies = [
       spyOn(process.stdout, "write"),
       spyOn(process.stderr, "write"),
@@ -90,8 +90,8 @@ describe("tui plugin", () => {
       spyOn(console, "error"),
     ]
     try {
-      setup({})
-      setup({ debugLogFile: join(directory, "nap.log") })
+      await setup({})
+      await setup({ debugLogFile: join(directory, "nap.log") })
       for (const spy of spies) expect(spy).not.toHaveBeenCalled()
     } finally {
       for (const spy of spies) spy.mockRestore()
