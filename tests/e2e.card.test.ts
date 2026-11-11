@@ -53,7 +53,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
     expect(drawn).toContain("Napping… press any key or click to wake")
     expect(drawn).toContain("Napping · ")
     expect(drawn).toContain("work keeps running")
-    expect(drawn).toContain(scratch.project)
+    // Long scratch paths are cut to their last segments, so only the end is certain.
+    expect(drawn).toContain("/project")
     expect(drawn).toContain("any key wake")
     expect(drawn).toContain("2.2.4")
     // The stub prints once and waits: one shell and its reader, nothing else.
