@@ -19,6 +19,7 @@ export interface IdleSource {
 // SGR (1006), urxvt (1015) and X10 mouse reports.
 // eslint-disable-next-line no-control-regex
 const MOUSE_REPORT = /\x1b\[<\d+;\d+;\d+[Mm]|\x1b\[\d+;\d+;\d+M|\x1b\[M[\s\S]{3}/
+const MOUSE_TAIL_LIMIT = 64
 
 // A read the plugin saw explains an access time within this window of it. The
 // kernel stores whole seconds, so the read is up to a second after the stamp.
@@ -45,6 +46,7 @@ export function createIdleSource(input: IdleSourceInput): IdleSource {
   let lastInputAt = input.now()
   let lastAtime = input.readAtime()
   let seen: number[] = []
+  let mouseTail = ""
 
   const mark = (at: number) => {
     if (at > lastInputAt) lastInputAt = at
@@ -52,8 +54,16 @@ export function createIdleSource(input: IdleSourceInput): IdleSource {
   const onInput = () => mark(input.now())
   const onData = (chunk: unknown) => {
     const now = input.now()
+    // Atime may never advance; raw reads must still expire old observations.
+    seen = seen.filter(at => now - at <= SEEN_KEEP_MS)
     seen.push(now)
-    if (MOUSE_REPORT.test(toText(chunk))) mark(now)
+    const text = mouseTail + toText(chunk)
+    if (MOUSE_REPORT.test(text)) mark(now)
+    // Raw reads can split a report. Keep only a short, unfinished escape
+    // sequence so a completed report cannot count again on the next read.
+    const escape = text.lastIndexOf("\x1b")
+    const tail = escape === -1 ? "" : text.slice(escape)
+    mouseTail = tail.length <= MOUSE_TAIL_LIMIT && !MOUSE_REPORT.test(tail) ? tail : ""
   }
 
   const checkAtime = () => {

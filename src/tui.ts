@@ -8,16 +8,10 @@ import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
 import { createLog, type Log } from "./log.js"
 import { park } from "./park.js"
-import { createPendingWrites, type PendingWrites } from "./pending.js"
 import { decide } from "./policy.js"
 import { probe } from "./probe.js"
 import { probePrompt } from "./prompt.js"
 import { realProcess, type NapProcess } from "./process.js"
-
-/** Seam for a later feature: the plugin's own storage writes. */
-export interface NapHooks {
-  pending?: PendingWrites
-}
 
 // How soon to try again after a nap was skipped at nap time.
 const SKIP_RETRY_MS = 5_000
@@ -41,8 +35,8 @@ function restoreHandedOverDraft(context: unknown, proc: NapProcess, log: Log): D
   try {
     const text = proc.drafts.take()
     return text === undefined ? undefined : restoreDraft({ text, renderer: rendererOf(context), log })
-  } catch (error) {
-    log.once("draft not restored", { reason: describe(error) })
+  } catch {
+    log.once("draft not restored", { reason: "the handed-over draft could not be restored" })
     return undefined
   }
 }
@@ -51,7 +45,7 @@ function restoreHandedOverDraft(context: unknown, proc: NapProcess, log: Log): D
  * Runs the plugin for one TUI and returns its cleanup. Every way of turning
  * off writes one log line and leaves the TUI as it was.
  */
-export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: NapProcess, hooks: NapHooks = {}): () => void {
+export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: NapProcess): () => void {
   type State = "starting" | "running" | "napping" | "off"
   let state: State = "starting"
   let timer: unknown
@@ -114,7 +108,6 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
   }
 
   const resolveDirectory = directoryResolver(proc.start)
-  const pending = hooks.pending ?? createPendingWrites()
 
   let idle: IdleSource | undefined
   let focus: FocusSource | undefined
@@ -130,22 +123,21 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     timer = proc.setTimer(tick, ms)
   }
 
-  const nap = async (rule: string) => {
+  const nap = (rule: string) => {
     state = "napping"
     let result
     try {
       const route = host.ui.router.current()
-      result = await park({
+      result = park({
         route,
         args: proc.args,
         resolveDirectory,
         opencodePath: proc.execPath,
         env: proc.env(),
         title: sessionID => host.data.session.get(sessionID)?.title,
-        pending,
         beforeNap: () => carry?.capture(),
         stillDue: () => state === "napping" && decideNow().action === "nap",
-        onExec: () => log.write("napping", { rule, route }),
+        onExec: route => log.write("napping", { rule, route }),
         execve: proc.execve,
       })
     } catch (error) {
@@ -186,7 +178,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
       return
     }
     if (decision.action === "nap") {
-      void nap(decision.rule)
+      nap(decision.rule)
       return
     }
     for (const reason of decision.deferred) log.once(`nap deferred: ${reason}`)
@@ -247,14 +239,17 @@ const plugin = {
   id: "opencode-nap",
   setup(context) {
     let rawOptions: unknown
+    let debugLogFile: unknown
     try {
       rawOptions = context.options
+      debugLogFile = isRecord(rawOptions) ? rawOptions.debugLogFile : undefined
     } catch {
-      rawOptions = undefined
+      // Unreadable options could hide enabled: false; never guess defaults.
+      return () => {}
     }
     // Read from the raw options so there is a log even when they are invalid.
-    const log = createLog(isRecord(rawOptions) ? rawOptions.debugLogFile : undefined)
-    log.write("loaded", { options: rawOptions })
+    const log = createLog(debugLogFile)
+    log.write("loaded")
     try {
       return startNap(context, rawOptions, log, realProcess())
     } catch (error) {

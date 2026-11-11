@@ -26,9 +26,9 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion} loads the packed plugin in 
 
   afterAll(cleanup, 60_000)
 
-  it("loads the npm-installed package listed with options in cli.json", async () => {
+  it("loads the npm-installed package and applies options from cli.json", async () => {
     const debugLogFile = join(scratch.root, "nap.log")
-    const options = { idleMinutes: 5, debugLogFile }
+    const options = { enabled: false, debugLogFile }
     await writeCliConfig(scratch, [{ package: installedPackage(scratch), options }])
 
     const sessionID = await createSession(scratch, server.url)
@@ -37,12 +37,15 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion} loads the packed plugin in 
     const context = () => `TUI screen:\n${tui.text().slice(-3000)}\nserver:\n${server.process.text().slice(-2000)}`
     const entries = await waitUntil(async () => {
       const found = await readJsonLines(debugLogFile)
-      return found.some(entry => entry.message === "loaded") ? found : undefined
-    }, 60_000, `"loaded" in the debug log`, context)
+      const loaded = found.some(entry => entry.message === "loaded")
+      const disabled = found.some(entry => entry.message === "refused" && entry.detail?.reason === "disabled in options")
+      return loaded && disabled ? found : undefined
+    }, 60_000, `"loaded" and "disabled in options" in the debug log`, context)
 
     const loaded = entries.filter(entry => entry.message === "loaded")
     expect(loaded, context()).toHaveLength(1)
-    expect(loaded[0].detail?.options, context()).toEqual(options)
+    const refused = entries.filter(entry => entry.message === "refused")
+    expect(refused.map(entry => entry.detail?.reason), context()).toEqual(["disabled in options"])
     // Still running, and OpenCode did not report the plugin as failed.
     await sleep(1_000)
     expect(await Promise.race([tui.exited.then(() => "exited"), sleep(0).then(() => "running")]), context()).toBe("running")
@@ -50,4 +53,3 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion} loads the packed plugin in 
     await tui.stop()
   }, 120_000)
 })
-

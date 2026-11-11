@@ -66,6 +66,8 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
 
    Wait for `server listening on http://…` in `server.out`. For every TUI start/restart below, use `./node_modules/.bin/opencode --server <that-url> .`, not bare `opencode`. Do not configure a hosted provider. These steps follow the isolation in [the test harness](../tests/e2e/harness.ts); only step 13 may use a default service.
 
+   Never press Enter to submit a prompt or answer a permission in the TUI. For steps 11–12, use only the scratch private server API, with Basic authentication and the `x-opencode-directory` header as in [`callApi`](../tests/e2e/harness.ts). The [run tests](../tests/e2e.run.test.ts) show the exact calls: submit with `POST /api/session/<sessionID>/prompt` and `{ "text": "NAP_SLOW" }` or `{ "text": "NAP_PERM" }`; get the pending permission ID with `GET /api/session/<sessionID>/permission`, then answer with `POST /api/session/<sessionID>/permission/<permissionID>/reply` and `{ "decision": "once" }`. Keep the scratch password out of output and logs.
+
 ## Steps
 
 4. **Load.** Start the TUI against the private server and open a session.
@@ -75,7 +77,7 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
 5. **Nap and memory.** Use `ps -axo pid,ppid,rss,comm` to record the TUI's PID and RSS, including children but excluding the separate server. Leave it idle for about 30 seconds; measure again.
    - Expect: the window clears and shows the session title and `Napping to save memory. Press any key or click to wake.`
    - Expect: the process ID is the same as before the nap.
-   - Expect: much lower total RSS. Linux measured about 152 MB awake and 4 MB napped; macOS values need measuring. `ps` reports KiB.
+    - Expect: much lower total RSS. Linux measured about 152 MB awake and 4 MB napped; record macOS values for this terminal. `ps` reports KiB.
    - Include the `dd` reader listed by `pgrep -P <pid>` in the total.
    - [ ] Result (awake and napped totals, process counts, time to nap):
 
@@ -102,15 +104,15 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
     - Then set `"napOnBlur": false` and `"blurIdleMinutes": 0.25`; restart and leave unfocused. Expect a nap after about 15 idle seconds. Remove `blurIdleMinutes` afterward.
     - [ ] Result:
 
-11. **Mid-run nap.** Set `"napOnBlur": false` and `"idleMinutes": 0.25`; restart. Send `NAP_SLOW` to the local fake provider; it streams for 45 seconds.
+11. **Mid-run nap.** Set `"napOnBlur": false` and `"idleMinutes": 0.25`; restart. Submit `NAP_SLOW` through the private server API above; the local fake provider streams for 45 seconds.
     - Expect: the window naps while the reply is still streaming.
     - Wait a minute, then wake. Expect the full reply through `NAP_SLOW_DONE`, without error.
     - [ ] Result:
 
-12. **Permission prompt after wake.** Send `NAP_PERM` to the local fake provider. It requests a harmless write to `nap-e2e-permission.txt` in the scratch project. Leave permission unanswered.
+12. **Permission prompt after wake.** Submit `NAP_PERM` through the private server API above. The local fake provider requests a harmless write to `nap-e2e-permission.txt` in the scratch project. Leave permission unanswered.
     - Wait for the nap, then wake with a key.
     - Expect: the permission prompt returns, still unanswered by the wake key.
-    - Leave it open for at least 10 seconds, then allow once. Expect `NAP_PERM_DONE`.
+    - Leave it open for at least 10 seconds, then allow once through the API above, not the TUI. Expect `NAP_PERM_DONE`.
     - [ ] Result:
 
 13. **Background service — isolated account/VM only.** This requires a disposable macOS account or VM with no unrelated service. Repeat the scratch setup there. Immediately before starting the default service, prove ports 49374 and 49375 are idle: `lsof -nP -iTCP:49374 -iTCP:49375 -sTCP:LISTEN` must show no listeners, and `nc -vz <address> <port>` must report connection refused for both ports on both `127.0.0.1` and `::1`. Only then start `./node_modules/.bin/opencode .` without `--server`; repeat steps 5 and 6. If isolation or port checks are uncertain, mark **not run**. Never probe by starting a service on your everyday account.

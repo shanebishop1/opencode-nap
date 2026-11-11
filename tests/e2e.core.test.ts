@@ -124,7 +124,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     await run.waitForWatching(2)
 
     expect((await watch.ask("state")).result.argv, await run.context()).toEqual(["--server", server.url, scratch.project])
-    expect((await watch.napEntries()).find(entry => entry.message === "napping")?.detail?.route).toEqual({ type: "home" })
+    expect((await watch.napEntries()).find(entry => entry.message === "napping")?.detail?.route).toEqual({ type: "other" })
     expect((await watch.ask("state")).result.route).toEqual({ type: "home" })
     await waitUntil(() => (/Ask anything/.test(stripEscapesSince(tui, offset)) ? true : undefined), 10_000, "the start screen", () => stripEscapesSince(tui, offset))
     expect(await sessionIDs()).toEqual(before)

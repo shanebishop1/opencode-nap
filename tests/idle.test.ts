@@ -58,6 +58,59 @@ describe("createIdleSource", () => {
     expect(idle.lastInputAt()).toBe(startedAt)
   })
 
+  it("ac-input-resets: counts mouse reports split at every byte boundary", () => {
+    for (const report of ["\x1b[<35;10;10M", "\x1b[<0;1;1m", "\x1b[32;10;10M", "\x1b[M #!"]) {
+      for (let split = 1; split < report.length; split++) {
+        const { idle, stdin, tick, setAtime, startedAt } = setup()
+        tick(5_000)
+        stdin.emit("data", Buffer.from(report.slice(0, split), "latin1"))
+        expect(idle.lastInputAt()).toBe(startedAt)
+        const completedAt = tick(1_000)
+        stdin.emit("data", Buffer.from(report.slice(split), "latin1"))
+        setAtime(completedAt)
+        expect(idle.lastInputAt()).toBe(completedAt)
+      }
+    }
+  })
+
+  it("ac-focus-not-input: split focus reports and terminal replies still do not reset idle", () => {
+    const { idle, stdin, tick, setAtime, startedAt } = setup()
+    for (const report of ["\x1b[I", "\x1b[O", "\x1b[?997;1n", "\x1b[?2026;2$y"]) {
+      for (const byte of report) {
+        setAtime(tick(1_000))
+        stdin.emit("data", Buffer.from(byte, "latin1"))
+        expect(idle.lastInputAt()).toBe(startedAt)
+      }
+    }
+  })
+
+  it("ac-input-resets: handles bytewise reports without counting a completed report twice", () => {
+    for (const report of ["\x1b[<35;10;10M", "\x1b[M #!"]) {
+      const { idle, stdin, tick } = setup()
+      let completedAt = 0
+      for (const byte of report) {
+        completedAt = tick(1_000)
+        stdin.emit("data", Buffer.from(byte, "latin1"))
+      }
+      expect(idle.lastInputAt()).toBe(completedAt)
+      tick(1_000)
+      stdin.emit("data", Buffer.from("\x1b[I"))
+      expect(idle.lastInputAt()).toBe(completedAt)
+    }
+  })
+
+  it("discards oversized unfinished reports and recognises the next mouse report", () => {
+    const { idle, stdin, tick, startedAt } = setup()
+    tick(1_000)
+    stdin.emit("data", `\x1b[<${"1".repeat(100_000)}`)
+    tick(1_000)
+    stdin.emit("data", ";1;1M")
+    expect(idle.lastInputAt()).toBe(startedAt)
+    const at = tick(1_000)
+    stdin.emit("data", "\x1b[M #!")
+    expect(idle.lastInputAt()).toBe(at)
+  })
+
   it("ac-focus-not-input: ignores an access-time bump from a focus report it saw", () => {
     const { idle, stdin, tick, setAtime, startedAt } = setup()
     const at = tick(12_345)
@@ -87,10 +140,21 @@ describe("createIdleSource", () => {
     expect(idle.lastInputAt()).toBe(now)
   })
 
-  it("tolerates an unreadable access time", () => {
-    const { idle, keyInput, tick, setAtime, startedAt } = setup()
+  it("ac-focus-not-input, ac-input-resets: handles a long raw stream without a readable access time", () => {
+    const { idle, keyInput, stdin, tick, setAtime, startedAt } = setup()
     setAtime(undefined)
+    for (let second = 0; second < 120; second++) {
+      tick(1_000)
+      stdin.emit("data", "\x1b[I")
+    }
     expect(idle.lastInputAt()).toBe(startedAt)
+    stdin.emit("data", "\x1b[<35;10;")
+    const moved = tick(1_000)
+    stdin.emit("data", "10M")
+    expect(idle.lastInputAt()).toBe(moved)
+    tick(1_000)
+    stdin.emit("data", "\x1b[O")
+    expect(idle.lastInputAt()).toBe(moved)
     const pressed = tick(1_000)
     keyInput.emit("keypress", { name: "a" })
     expect(idle.lastInputAt()).toBe(pressed)

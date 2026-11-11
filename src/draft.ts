@@ -3,8 +3,6 @@ import type { Log } from "./log.js"
 import { NapDeferral } from "./park.js"
 import { probePrompt, trackPrompt, type PromptEditor } from "./prompt.js"
 
-const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
 export interface DraftCarry {
   /** For park's beforeNap: stores the draft and returns the environment that hands it over, or a deferral. */
   capture(): Record<string, string> | NapDeferral | undefined
@@ -38,14 +36,15 @@ export function createDraftCarry(input: DraftCarryInput): DraftCarry {
       let text: string
       try {
         text = (input.unrestored() ?? "") + (prompt.text() ?? "")
-      } catch (error) {
-        return new NapDeferral(`cannot read the draft: ${describe(error)}`)
+      } catch {
+        // An editor exception may quote private text.
+        return new NapDeferral("cannot read the draft: the prompt editor threw")
       }
       if (text === "") return undefined
       try {
         stored = input.files.save(text)
-      } catch (error) {
-        return new NapDeferral(`cannot save the draft: ${describe(error)}`)
+      } catch {
+        return new NapDeferral("cannot save the draft: the draft file could not be written")
       }
       return { [DRAFT_ENV]: stored }
     },
