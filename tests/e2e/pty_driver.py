@@ -60,7 +60,9 @@ def reap(pid, timeout):
 
 def stop(pid):
     signal_group(pid, signal.SIGTERM)
-    status = reap(pid, 3)
+    # Teardown is not a shutdown test. Bound OpenCode's graceful exit rather
+    # than spending seconds on its background workers after every case.
+    status = reap(pid, 0.25)
     # The group may outlive its leader, so always finish it off.
     signal_group(pid, signal.SIGKILL)
     if status is None:

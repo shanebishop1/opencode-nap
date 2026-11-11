@@ -2,11 +2,11 @@ import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bu
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { STUB_SCRIPT, buildStubExec, sanitizeTitle } from "../src/stub.js"
+import { STUB_SCRIPT, buildStubExec } from "../src/stub.js"
 import { startPty } from "./e2e/pty.js"
 
 const FAKE = join(import.meta.dir, "fixtures", "fake-opencode.py")
-const CARD = "Press any key or click to wake."
+const CARD = "NAP CARD"
 const ESC = "\x1b"
 // The stub turns click reporting on last, just before it waits for input.
 const ARMED = `${ESC}[?1000h${ESC}[?1006h`
@@ -72,12 +72,12 @@ const sleep = (ms: number) => new Promise(done => setTimeout(done, ms))
  * has not exited within `timeoutMs` is stopped and reported as timed out.
  */
 async function runStub(
-  input: { cardTitle?: string; opencodePath?: string; args?: string[] },
+  input: { card?: string; opencodePath?: string; args?: string[] },
   steps: Step[],
   timeoutMs = 6_000,
 ): Promise<Run> {
   const exec = buildStubExec({
-    cardTitle: input.cardTitle,
+    card: input.card ?? CARD,
     opencodePath: input.opencodePath ?? opencode,
     args: input.args ?? [],
   })
@@ -123,7 +123,7 @@ function napOutput(run: Run): string {
 describe("buildStubExec", () => {
   it("passes every value as a positional argument after the script", () => {
     const exec = buildStubExec({
-      cardTitle: "My session",
+      card: "My session",
       opencodePath: "/opt/opencode",
       args: ["-s", "ses_1", "$(touch x)"],
     })
@@ -135,18 +135,6 @@ describe("buildStubExec", () => {
     expect(STUB_SCRIPT).not.toContain("My session")
   })
 
-  it("passes an empty title when the session title is unknown", () => {
-    expect(buildStubExec({ cardTitle: undefined, opencodePath: "/o", args: [] }).argv[4]).toBe("")
-  })
-})
-
-describe("sanitizeTitle", () => {
-  it("replaces control characters, ESC and C1 with spaces", () => {
-    expect(sanitizeTitle(`a${ESC}[31mred\x07\x00\tb\nc\x9bd\x7f`)).toBe("a [31mred b c d")
-    expect(sanitizeTitle(`${ESC}]0;x\x07`)).toBe("]0;x")
-    expect(sanitizeTitle("plain title")).toBe("plain title")
-    expect(sanitizeTitle(undefined)).toBe("")
-  })
 })
 
 describe("resumeCommand", () => {
@@ -166,7 +154,7 @@ describe("resumeCommand", () => {
 
 describe("stub under a terminal", () => {
   it("ac-terminal-clean: resets terminal modes, shows the card, then enables clicks only", async () => {
-    const run = await runStub({ cardTitle: `Fix ${ESC}[2J the bug\x07` }, wakeSteps([{ send: SPACE }]))
+    const run = await runStub({}, wakeSteps([{ send: SPACE }]))
     const nap = napOutput(run)
     const card = nap.indexOf(CARD)
 
@@ -178,8 +166,6 @@ describe("stub under a terminal", () => {
     }
     expect(nap.indexOf(`${ESC}[<99u`)).toBeLessThan(nap.indexOf(`${ESC}[?1049l`))
     expect(nap.lastIndexOf(`${ESC}[<99u`)).toBeGreaterThan(nap.indexOf(`${ESC}[?1049l`))
-    expect(nap).toContain("Fix [2J the bug\r\n")
-    expect(nap).not.toContain(`${ESC}[2J the bug`)
     expect(nap.indexOf(ARMED)).toBeGreaterThan(card)
     expect(nap.lastIndexOf(`${ESC}[?1000l${ESC}[?1006l`)).toBeGreaterThan(card)
     for (const mode of ["1002", "1003", "1004", "1015", "1049", "2004"]) {
@@ -187,13 +173,22 @@ describe("stub under a terminal", () => {
     }
   })
 
-  it("ac-terminal-clean: omits the title line when there is no title", async () => {
+  it("ac-terminal-clean: prints the card verbatim, with nothing in it interpreted", async () => {
+    const card = `${ESC}[1m100%s \\n \\033 $HOME $(x) \`y\`${ESC}[0m`
+    const run = await runStub({ card }, wakeSteps([{ send: SPACE }]))
+    expect(napOutput(run)).toContain(`${ESC}[H${card}${ESC}[?1000h`)
+  })
+
+  it("ac-terminal-clean: clears the card's colours and screen before OpenCode starts", async () => {
     const run = await runStub({}, wakeSteps([{ send: SPACE }]))
-    expect(napOutput(run)).toContain(`${ESC}[HNapping to save memory. ${CARD}`)
+    const woken = run.output.slice(run.output.indexOf(ARMED))
+    expect(woken).toContain(`${ESC}[?1000l${ESC}[?1006l`)
+    expect(woken.indexOf(`${ESC}[0m${ESC}[2J${ESC}[H`)).toBeGreaterThan(woken.indexOf(`${ESC}[?1000l`))
+    expect(woken.indexOf(`${ESC}[0m${ESC}[2J${ESC}[H`)).toBeLessThan(woken.indexOf("@@READY@@"))
   })
 
   it("ac-wake-key: a key wakes OpenCode with exactly its arguments and environment", async () => {
-    const run = await runStub({ cardTitle: "Session", args: TRICKY_ARGS }, wakeSteps([{ send: SPACE }]))
+    const run = await runStub({ args: TRICKY_ARGS }, wakeSteps([{ send: SPACE }]))
 
     expect(run.timedOut).toBe(false)
     expect(run.status).toBe(0)

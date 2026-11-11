@@ -5,6 +5,7 @@ import { directoryResolver } from "./directory.js"
 import { createDraftCarry, restoreDraft, type DraftRestore } from "./draft.js"
 import { createFocusSource, type FocusSource } from "./focus.js"
 import { checkGuards } from "./guards.js"
+import { hostCard } from "./host-card.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
 import { createLog, type Log } from "./log.js"
 import { park } from "./park.js"
@@ -135,7 +136,11 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
         resolveDirectory,
         opencodePath: proc.execPath,
         env: proc.env(),
-        title: sessionID => host.data.session.get(sessionID)?.title,
+        session: sessionID => {
+          const session = host.data.session.get(sessionID)
+          return { title: session?.title, directory: session?.location?.directory }
+        },
+        card: session => hostCard(context, proc, session),
         beforeNap: () => carry?.capture(),
         stillDue: () => state === "napping" && decideNow().action === "nap",
         onExec: route => log.write("napping", { rule, route }),

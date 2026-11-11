@@ -4,7 +4,7 @@ import { installedPackage, installObserver, writeCliConfig, type Scratch } from 
 import { processTree } from "./processes.js"
 import { stripEscapes, type PtyProcess } from "./pty.js"
 
-export const CARD = /Napping to save memory\. Press any key or click to wake\./g
+export const CARD = /Napping… press any key or click to wake/g
 export const SPACE = " "
 // A left click, press and release, in SGR mouse encoding.
 export const CLICK = "\x1b[<0;20;10M\x1b[<0;20;10m"
@@ -20,8 +20,9 @@ export const sleep = (milliseconds: number) => new Promise(done => setTimeout(do
 
 export type Entry = Record<string, any>
 
-// A napping window's process is the stub, `sh -c <script> ...`.
-const isStub = (commandLine: string): boolean => /^sh -c /.test(commandLine)
+// A napping window's process is the stub, `sh -c <script> ...`, or the shell
+// it replaces itself with, `/bin/sh -c <script> ...`.
+const isStub = (commandLine: string): boolean => /^(\/bin\/)?sh -c /.test(commandLine)
 
 /** What the TUI drew after the given offset in its raw output, as plain text. */
 export const stripEscapesSince = (tui: PtyProcess, offset: number): string => stripEscapes(tui.output().slice(offset))

@@ -8,6 +8,7 @@ import {
 import { CARD, readJsonLines } from "./e2e/nap-run.js"
 import { processTree } from "./e2e/processes.js"
 import type { PtyProcess } from "./e2e/pty.js"
+import { napOptions } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string } | undefined
@@ -25,7 +26,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: opencode.json configuratio
   for (const source of ["project", "global", "both", "override"] as const) {
     it(`applies ${source} options with one watcher per window`, async () => {
       const debugLogFile = join(scratch.root, `${source}.nap.jsonl`)
-      const options = { idleMinutes: 0.15, debugLogFile }
+      const options = { ...napOptions, debugLogFile }
       const entry = { package: installedPackage(scratch), options }
       await writeCliConfig(scratch, source === "both" ? [installedPackage(scratch)] : source === "override" ? [entry] : [])
       const serverEntry = source === "override" ? { ...entry, options: { enabled: false } } : entry
@@ -39,7 +40,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: opencode.json configuratio
       const sessionID = await createSession(scratch, server.url)
       const tui = await startTuiWith(scratch, source, ["--server", server.url, "-s", sessionID, scratch.project])
       await tui.waitFor(CARD, 45_000)
-      expect((await processTree(tui.pid)).leader).toStartWith("sh -c ")
+      expect((await processTree(tui.pid)).leader).toMatch(/^(\/bin\/)?sh -c /)
       expect((await readJsonLines(debugLogFile)).map(entry => entry.message)).toEqual(["loaded", "watching", "napping"])
       expect(tui.text()).not.toContain("Plugin failed")
     }, 120_000)

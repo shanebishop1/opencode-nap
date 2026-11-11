@@ -1,4 +1,5 @@
 import { fstatSync } from "node:fs"
+import { homedir } from "node:os"
 import { sameDirectory, type StartDirectory } from "./directory.js"
 import { draftFiles, type DraftFiles } from "./draft-file.js"
 import { collectGuardFacts, type GuardFacts } from "./guards.js"
@@ -12,6 +13,9 @@ export interface NapProcess {
   /** The TUI's arguments after the executable and script. */
   args: string[]
   execPath: string
+  home: string
+  /** The terminal's size in cells, or undefined when it cannot be read. */
+  terminalSize(): { width: number; height: number } | undefined
   env(): NodeJS.ProcessEnv
   start: StartDirectory
   stdin: unknown
@@ -29,6 +33,11 @@ function readAtime(): number | undefined {
   }
 }
 
+function terminalSize(): { width: number; height: number } | undefined {
+  const { columns, rows } = process.stdout
+  return columns > 0 && rows > 0 ? { width: columns, height: rows } : undefined
+}
+
 export function realProcess(): NapProcess {
   return {
     now: () => Date.now(),
@@ -40,6 +49,8 @@ export function realProcess(): NapProcess {
     clearTimer: timer => clearTimeout(timer as ReturnType<typeof setTimeout>),
     args: process.argv.slice(2),
     execPath: process.execPath,
+    home: homedir(),
+    terminalSize,
     env: () => process.env,
     start: { cwd: process.cwd(), pwd: process.env.PWD, sameDirectory },
     stdin: process.stdin,

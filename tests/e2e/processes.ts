@@ -24,13 +24,14 @@ export function descendants(processes: ProcessInfo[], roots: number[]): Set<numb
   return found
 }
 
-/** A process and its descendants: their resident memory and the leader's command line. */
-export async function processTree(pid: number): Promise<{ leader: string; rssKiB: number; count: number; members: ProcessInfo[] }> {
+/** A process and its descendants: their resident memory, and the leader's command line and own memory. */
+export async function processTree(pid: number): Promise<{ leader: string; leaderRssKiB: number; rssKiB: number; count: number; members: ProcessInfo[] }> {
   const processes = await listProcesses()
   const family = descendants(processes, [pid])
   const members = processes.filter(info => family.has(info.pid))
   return {
     leader: processes.find(info => info.pid === pid)?.args ?? "",
+    leaderRssKiB: processes.find(info => info.pid === pid)?.rss ?? 0,
     rssKiB: members.reduce((total, info) => total + info.rss, 0),
     count: members.length,
     members,

@@ -134,12 +134,17 @@ export async function startPty(options: PtyOptions): Promise<PtyProcess> {
         } catch {
           // The driver has already closed its input.
         }
-        await Promise.race([child.exited, sleep(10_000)])
-      }
-      if (child.exitCode === null) {
-        // The driver is stuck, so do its job: stop the group, then the driver.
-        killGroup(commandPid)
-        child.kill(9)
+        const timeout = setTimeout(() => {
+          // The driver is stuck, so do its job: stop the group, then the driver.
+          killGroup(commandPid)
+          child.kill(9)
+        }, 10_000)
+        try {
+          await child.exited
+        } finally {
+          // A losing Promise.race timer would keep the test process alive.
+          clearTimeout(timeout)
+        }
       }
       await child.exited
     },

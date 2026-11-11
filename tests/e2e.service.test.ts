@@ -4,6 +4,7 @@ import { cleanup, cliVersion, createScratch, e2eEnabled, startCommand, type Scra
 import { NapRun, SPACE, waitUntil, Watch } from "./e2e/nap-run.js"
 import { processTree } from "./e2e/processes.js"
 import { pythonPath } from "./e2e/pty.js"
+import { napOptions } from "./e2e/timing.js"
 
 // The default service listens on a fixed port (49374, or 49375 for local
 // builds) and can replace a running service, so a TUI without --server only
@@ -17,6 +18,12 @@ if interfaces != ["lo"]:
     raise SystemExit("unexpected interfaces: %r" % interfaces)
 for port in (49374, 49375):
     probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    # Linux can connect a TCP socket to itself without any listening server.
+    while probe.getsockname()[1] == port:
+        probe.close()
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
     probe.settimeout(2)
     try:
         probe.connect(("127.0.0.1", port))
@@ -89,7 +96,7 @@ describe.skipIf(!runnable)(`OpenCode ${cliVersion}: the default service, in a pr
 
   it("ac-both-servers: a TUI on the default service (no --server) naps and wakes", async () => {
     if (!("prefix" in isolation)) throw new Error("unreachable")
-    const watch = await Watch.configure(scratch, "service", { idleMinutes: 0.25 })
+    const watch = await Watch.configure(scratch, "service", napOptions)
     // The TUI finds the service through its scratch registration, not a password.
     const env: Record<string, string> = { ...scratch.env, PROOF }
     delete env.OPENCODE_PASSWORD
@@ -99,8 +106,9 @@ describe.skipIf(!runnable)(`OpenCode ${cliVersion}: the default service, in a pr
     let namespace: string | undefined
     try {
       const [, proved] = await wrapper.waitFor(/NAP_E2E_PRIVATE_NETWORK (net:\[\d+\])/, 30_000)
+      expect(proved).not.toBe(netns("self"))
+      // Only arm namespace cleanup after proving it cannot target the caller.
       namespace = proved
-      expect(namespace).not.toBe(netns("self"))
 
       // bwrap stays as the parent; unshare execs in place.
       const tuiPid = await waitUntil(async () => (await processTree(wrapper.pid)).members

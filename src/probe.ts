@@ -1,3 +1,5 @@
+import { isObject, read } from "./read.js"
+
 export type Listener = (...args: unknown[]) => void
 
 export interface Emitter {
@@ -9,28 +11,15 @@ export interface Emitter {
 export interface NapHost {
   ui: { router: { current(): unknown } }
   client: { server: { info(): Promise<unknown> } }
-  data: { session: { get(sessionID: string): { title?: unknown } | undefined } }
+  data: { session: { get(sessionID: string): { title?: unknown; location?: { directory?: unknown } } | undefined } }
   renderer: Emitter & { keyInput: Emitter; stdin: unknown; controlState: unknown }
 }
 
 export type ProbeResult = { ok: true; host: NapHost; stdin: Emitter } | { ok: false; missing: string }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  (typeof value === "object" || typeof value === "function") && value !== null
-
 const isFunction = (value: unknown): boolean => typeof value === "function"
 
 const isEmitter = (value: unknown): boolean => isObject(value) && isFunction(value.on) && isFunction(value.off)
-
-// Walks a dotted path to the value it names, or undefined.
-function read(root: unknown, path: string): unknown {
-  let value = root
-  for (const key of path.split(".")) {
-    if (!isObject(value)) return undefined
-    value = value[key]
-  }
-  return value
-}
 
 // Checked in order; the first that fails is reported by name.
 const checks: Array<[name: string, check: (context: unknown, stdin: unknown) => boolean]> = [

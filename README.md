@@ -51,7 +51,7 @@ Input means a key press, a paste or mouse input. The focus options need a termin
 
 ## How it works
 
-When a window has been idle long enough, the OpenCode process replaces itself with a tiny shell script that shows the session title and waits. Press any key or click to wake it: OpenCode starts again in the same window and opens the same session. The key you pressed is not sent to OpenCode.
+When a window has been idle long enough, the OpenCode process replaces itself with a tiny shell script that waits. It first draws a copy of OpenCode's home screen in your theme's colours: the logo, a box saying the window is napping with the session title, and the working directory. The screen is drawn once, so it stays as it was if you resize the terminal or change the theme while the window naps; a terminal too small for it gets a line of plain text. Press any key or click to wake it: OpenCode starts again in the same window and opens the same session. The key you pressed is not sent to OpenCode.
 
 Waking takes a second or two. A running session carries on in the server the whole time, and a permission or question prompt that comes up while the window naps is waiting for you when it wakes.
 
@@ -81,7 +81,7 @@ npm run build
 npm run test:e2e   # drives real OpenCode windows against a local fake model
 ```
 
-The end-to-end tests never call a hosted model. [docs/macos-checklist.md](docs/macos-checklist.md) covers checking a real terminal by hand.
+The end-to-end runner builds and installs the packed package once, then runs up to eight isolated test processes. Long files are split into complementary groups, so every case still runs. Processes share only installed dependencies: each gets its own HOME, XDG directories, project, temporary files and private servers. Short idle settings exercise the real nap timers without waiting minutes. The tests never call a hosted model. [docs/macos-checklist.md](docs/macos-checklist.md) covers checking a real terminal by hand.
 
 ## License
 

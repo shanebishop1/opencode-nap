@@ -1,6 +1,6 @@
 {
   "name": "opencode-nap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenCode TUI plugin that naps idle windows to free memory and wakes them into the same session",
   "type": "module",
   "exports": {
@@ -19,7 +19,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "test": "bun test",
-    "test:e2e": "NAP_E2E=1 bun test tests/e2e",
+    "test:e2e": "bun run tests/e2e/runner.ts",
     "lint": "eslint src tests --ext .ts",
     "typecheck": "tsc --noEmit",
     "ci:check": "npm run lint && npm run typecheck && npm test",
