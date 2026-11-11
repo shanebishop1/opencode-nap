@@ -18,7 +18,7 @@ const FOCUS_IN = "\x1b[I"
 const FOCUS_OUT = "\x1b[O"
 const FOCUS_MODE_QUERY = "\x1b[?1004$p"
 const FOCUS_MODE_REPLY = "\x1b[?1004;2$y"
-import { IDLE_MS, napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
+import { IDLE_MS, napOptions, NAP_SLACK_MS, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
@@ -109,7 +109,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
     const napped = await run.waitForNap(NAP_TIMEOUT_MS)
     expect(await napRule(), await run.context()).toBe("blurIdle")
     expect(napped.at - watchingAt, await run.context()).toBeGreaterThanOrEqual(IDLE_MS - 100)
-    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
+    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + NAP_SLACK_MS)
     console.log(`blurIdle: plugin start to card ${napped.at - watchingAt} ms`)
   }, 120_000)
 
@@ -152,7 +152,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
     expect(await napRule(), await run.context()).toBe("idle")
     expect(reports, await run.context()).toBeGreaterThanOrEqual(4)
     expect(napped.at - watchingAt, await run.context()).toBeGreaterThanOrEqual(IDLE_MS - 100)
-    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
+    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + NAP_SLACK_MS)
     // A report that restarted the idle time would put the nap IDLE_MS after it.
     expect(napped.at - lastReportAt, await run.context()).toBeLessThan(IDLE_MS)
     console.log(`defaults: ${reports} focus reports, the last ${napped.at - lastReportAt} ms before the card; ` +
