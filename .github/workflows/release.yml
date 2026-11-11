@@ -91,7 +91,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Publish to npm
-        run: npm publish --access public --provenance
+        run: |
+          package=$(node -p 'const p = require("./package.json"); `${p.name}@${p.version}`')
+          if npm view "$package" version >/dev/null 2>&1; then
+            echo "$package is already on npm"
+          else
+            npm publish --access public --provenance
+          fi
 
       - name: Create GitHub release
         env:
