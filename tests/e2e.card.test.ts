@@ -10,10 +10,12 @@ import { stripEscapes, type PtyProcess } from "./e2e/pty.js"
 
 const napOptions = { idleMinutes: 0.25 }
 const NAP_TIMEOUT_MS = 40_000
-// The card is a few KB of argument that the shell copies once to print. Two
-// stubs that differ only in their card differ by far less than this, so a card
-// that cost a loop, buffer or child process would show.
-const RSS_BUDGET_KIB = 64
+// The card is a constant 2 to 3 KB of argument, whatever the terminal size, so
+// it costs the shell a few pages of memory. Resident memory counts whole
+// pages, 4 KiB on Linux (8 to 16 KiB measured) and 16 KiB on Apple silicon,
+// where bash 3.2 measured 5 pages (80 KiB). A loop, buffer or child process
+// would cost several times this, so it is far from hidden.
+const RSS_BUDGET_KIB = 128
 // What the window as a whole may hold while napping, as in the core test.
 const NAPPED_LEADER_KIB = 5 * 1024
 
