@@ -1,6 +1,6 @@
 # macOS checklist
 
-Not run yet. Check Terminal.app and one other terminal (iTerm2 or Ghostty) on the same OpenCode build.
+Not run yet. Check at least one terminal, such as Ghostty or iTerm2.
 
 Record macOS, OpenCode and terminal versions, results, timings and notes.
 
@@ -96,7 +96,7 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
 9. **Nap on blur.** Set `"napOnBlur": true` and `"idleMinutes": 15`. Restart; switch to Finder and stay there.
    - Expect: the window naps about 2 seconds after you leave it.
    - Expect: switching back does not wake it; a key does.
-   - Terminal.app may not report focus. Record missing reports as a limitation, not a pass. Ordinary idle nap must still work.
+   - Some terminals do not report focus. Record missing reports as a limitation, not a pass. Ordinary idle nap must still work.
    - [ ] Result:
 
 10. **Quick switch does not nap.** Switch to another application and back within about 1 second.
