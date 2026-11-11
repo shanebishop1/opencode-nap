@@ -145,7 +145,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
         pending,
         beforeNap: () => carry?.capture(),
         stillDue: () => state === "napping" && decideNow().action === "nap",
-        onExec: () => log.write("napping", { rule, route }),
+        onExec: route => log.write("napping", { rule, route }),
         execve: proc.execve,
       })
     } catch (error) {
@@ -254,7 +254,7 @@ const plugin = {
     }
     // Read from the raw options so there is a log even when they are invalid.
     const log = createLog(isRecord(rawOptions) ? rawOptions.debugLogFile : undefined)
-    log.write("loaded", { options: rawOptions })
+    log.write("loaded")
     try {
       return startNap(context, rawOptions, log, realProcess())
     } catch (error) {

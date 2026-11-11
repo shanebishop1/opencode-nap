@@ -229,4 +229,26 @@ describe("draft carry-over", () => {
       expect(written).not.toContain(JSON.stringify(part).slice(1, -1))
     }
   })
+
+  it("ac-draft-not-logged: logs only route metadata, not the starting prompt or unknown fields", async () => {
+    const debugLogFile = join(tmp, "nap.log")
+    const text = "PRIVATE_STARTING_DRAFT_86f593"
+    for (const type of ["session", "home", "plugin"]) {
+      const napped = await napWith(text, {
+        log: createLog(debugLogFile),
+        edit: context => {
+          context.route = { type, sessionID: "ses_abc", prompt: { text, files: [] }, data: { text }, unknown: text }
+        },
+      })
+      napped.cleanup()
+    }
+    const written = readFileSync(debugLogFile, "utf8")
+    expect(written).not.toContain(text)
+    const naps = written.trim().split("\n").map(line => JSON.parse(line)).filter(line => line.message === "napping")
+    expect(naps.map(line => line.detail)).toEqual([
+      { rule: "idle", route: { type: "session", sessionID: "ses_abc" } },
+      { rule: "idle", route: { type: "other" } },
+      { rule: "idle", route: { type: "other" } },
+    ])
+  })
 })

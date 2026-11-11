@@ -34,7 +34,7 @@ export interface ParkInput {
   /** Checked after every wait; false when input arrived or the nap was deferred meanwhile. */
   stillDue: () => boolean
   /** Called just before the exec. */
-  onExec?: () => void
+  onExec?: (route: Route) => void
   execve: Execve
 }
 
@@ -59,7 +59,7 @@ export async function park(input: ParkInput): Promise<ParkResult> {
     opencodePath: input.opencodePath,
     args: wake.args,
   })
-  input.onExec?.()
+  input.onExec?.(route)
   try {
     input.execve(stub.file, stub.argv, { ...input.env, ...extraEnv })
   } catch (error) {

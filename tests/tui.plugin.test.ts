@@ -24,14 +24,15 @@ describe("tui plugin", () => {
     expect(typeof plugin.setup).toBe("function")
   })
 
-  it("logs that it loaded, with its options, to the debug log file", async () => {
+  it("logs that it loaded without dumping its options to the debug log file", async () => {
     const debugLogFile = join(directory, "nap.log")
     const cleanup = setup({ enabled: true, debugLogFile })
 
     expect(typeof cleanup).toBe("function")
     expect(() => (cleanup as () => void)()).not.toThrow()
     const [line] = (await readFile(debugLogFile, "utf8")).trim().split("\n")
-    expect(JSON.parse(line)).toMatchObject({ message: "loaded", detail: { options: { enabled: true, debugLogFile } } })
+    expect(JSON.parse(line)).toMatchObject({ message: "loaded" })
+    expect(JSON.parse(line)).not.toHaveProperty("detail")
   })
 
   it("still logs, from the raw options, when the options are invalid", async () => {
@@ -41,6 +42,16 @@ describe("tui plugin", () => {
     const lines = (await readFile(debugLogFile, "utf8")).trim().split("\n").map(line => JSON.parse(line))
     expect(lines.map(line => line.message)).toEqual(["loaded", "off: invalid options"])
     expect(lines[1].detail).toEqual({ message: 'invalid option "idleMinutes": must be a number greater than 0' })
+  })
+
+  it("ac-draft-not-logged: never logs raw option values, even when invalid", async () => {
+    const debugLogFile = join(directory, "nap.log")
+    const text = "PRIVATE_OPTION_DRAFT_fde2cd"
+    setup({ idleMinutes: text, prompt: text, debugLogFile })
+
+    const written = await readFile(debugLogFile, "utf8")
+    expect(written).not.toContain(text)
+    expect(written).toContain("off: invalid options")
   })
 
   it("turns off with one log line in a host without the internals it needs", async () => {
