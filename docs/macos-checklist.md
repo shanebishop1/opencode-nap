@@ -18,7 +18,7 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
    npm pack --pack-destination "$scratch"
    ```
 
-2. Enter a clean test shell. Never use the owner's config, credentials or service. Keep every launch below in this shell:
+2. Enter a clean test shell. Never use your own config, credentials or service. Keep every launch below in this shell:
 
    ```sh
    mkdir -p "$scratch/home" "$scratch/config/opencode" "$scratch/data" "$scratch/state" \
@@ -113,7 +113,7 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
     - Leave it open for at least 10 seconds, then allow once. Expect `NAP_PERM_DONE`.
     - [ ] Result:
 
-13. **Background service — isolated account/VM only.** This requires an owner-provided disposable macOS account or VM with no unrelated service. Repeat the scratch setup there. Immediately before starting the default service, prove ports 49374 and 49375 are idle: `lsof -nP -iTCP:49374 -iTCP:49375 -sTCP:LISTEN` must show no listeners, and `nc -vz <address> <port>` must report connection refused for both ports on both `127.0.0.1` and `::1`. Only then start `./node_modules/.bin/opencode .` without `--server`; repeat steps 5 and 6. If isolation or port checks are uncertain, mark **not run**. Never probe by starting a service on the owner's account.
+13. **Background service — isolated account/VM only.** This requires a disposable macOS account or VM with no unrelated service. Repeat the scratch setup there. Immediately before starting the default service, prove ports 49374 and 49375 are idle: `lsof -nP -iTCP:49374 -iTCP:49375 -sTCP:LISTEN` must show no listeners, and `nc -vz <address> <port>` must report connection refused for both ports on both `127.0.0.1` and `::1`. Only then start `./node_modules/.bin/opencode .` without `--server`; repeat steps 5 and 6. If isolation or port checks are uncertain, mark **not run**. Never probe by starting a service on your everyday account.
     - [ ] Result:
 
 14. **Named server.** Using the private server from setup, repeat steps 5 and 6. Confirm the server PID stays unchanged across nap and wake.
@@ -123,7 +123,7 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
     - Expect: no line contains the draft text.
     - [ ] Result:
 
-16. **Clean up.** Quit test TUIs; stop only the fixture/server you started with `kill "$provider_pid" "$server_pid"`, then `wait "$provider_pid" "$server_pid"`. Stop any service created in the disposable account/VM. Exit the clean shell; from its parent, run `rm -rf -- "$scratch"` and `unset password`. Remove this run's repository `dist/`, and repository `node_modules/` only if created for this check. Never restore or edit owner configs: none were used.
+16. **Clean up.** Quit test TUIs; stop only the fixture/server you started with `kill "$provider_pid" "$server_pid"`, then `wait "$provider_pid" "$server_pid"`. Stop any service created in the disposable account/VM. Exit the clean shell; from its parent, run `rm -rf -- "$scratch"` and `unset password`. Remove this run's repository `dist/`, and repository `node_modules/` only if created for this check. Do not restore or edit your own configs: none were used.
     - [ ] Result:
 
 17. **Record the terminals.** Replace "none yet" in the README with actual terminal versions, results and focus limitations. Do not claim unrun checks passed.
