@@ -3,7 +3,7 @@
 Switches the terminal to raw mode, prints @@READY@@, then reads its input
 until it sees the probe byte "Z" (or 3 s pass) and prints
 @@RESULT@@<json>@@END@@ with its arguments, every input byte it got (as
-latin-1 text), and the NAP_TEST_MARK environment value.
+latin-1 text), and whether the NAP_TEST_MARK sentinel was preserved.
 """
 
 import json
@@ -29,6 +29,6 @@ while b"Z" not in got and time.monotonic() < deadline:
 result = {
     "argv": sys.argv[1:],
     "stdin": got.decode("latin1"),
-    "mark": os.environ.get("NAP_TEST_MARK"),
+    "markKept": os.environ.get("NAP_TEST_MARK") == "nap-test-mark",
 }
 os.write(1, b"@@RESULT@@" + json.dumps(result).encode() + b"@@END@@")

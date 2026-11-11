@@ -6,7 +6,8 @@
 // A test drops a file named after a request into controlDir; the plugin
 // handles it, deletes it and logs the result:
 //   state         route, open tabs, the stored value, the prompt's text and
-//                 which of the plugin's variables are in the environment
+//                 argv and which of the plugin's variables are in the environment
+//   environment   whether the test marker and working directory survived wake
 //   prompt        the prompt's length, hash and cursor, and its text when short
 //   set           puts the file's text in the prompt, cursor at the end
 //   tab           opens the session ID in the file as a tab
@@ -43,6 +44,7 @@ export default {
       return focused && typeof focused.setText === "function" ? focused : undefined
     }
     const state = () => ({
+      argv: process.argv.slice(2),
       route: attempt(() => api.ui.router.current()),
       tabs: attempt(() => api.ui.tabs.list().map(tab => tab.sessionID)),
       stored: attempt(() => stored.value),
@@ -63,7 +65,7 @@ export default {
         logicalCursor: editor.logicalCursor,
       }
     }
-    log("setup", { argv: process.argv.slice(2), ...state() })
+    log("setup", state())
 
     // The prompt is interactive once its editor has focus.
     const ready = setInterval(() => {
@@ -75,6 +77,11 @@ export default {
 
     const handlers = {
       state: () => state(),
+      // Only booleans leave the target: never log environment values.
+      environment: () => ({
+        markerKept: process.env.NAP_E2E_MARK === "kept",
+        directoryKept: process.env.PWD === process.cwd(),
+      }),
       prompt: () => promptDetail(),
       set: text => {
         prompt()?.setText(text)

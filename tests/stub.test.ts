@@ -41,7 +41,7 @@ const resumeCommand = (opencodePath: string, args: string[]): string =>
   [opencodePath, ...args].map(word => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`)).join(" ")
 
 interface Step { expect?: string; send?: string; sleep?: number }
-interface FakeResult { argv: string[]; stdin: string; mark: string | null }
+interface FakeResult { argv: string[]; stdin: string; markKept: boolean }
 interface Run { output: string; status: number | null; timedOut: boolean; fake?: FakeResult }
 
 // Above a run's own 6 s limit, so a hung stub is killed and reported.
@@ -198,7 +198,7 @@ describe("stub under a terminal", () => {
     expect(run.timedOut).toBe(false)
     expect(run.status).toBe(0)
     expect(run.fake?.argv).toEqual(TRICKY_ARGS)
-    expect(run.fake?.mark).toBe(MARK)
+    expect(run.fake?.markKept).toBe(true)
   })
 
   it("ac-wake-key: the wake key does not reach OpenCode", async () => {
