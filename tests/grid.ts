@@ -8,15 +8,16 @@ export interface Cell {
 export interface Grid {
   cells: Cell[][]
   cursor: { row: number; col: number }
+  cursorVisible: boolean
   /** The characters of a row, trailing spaces trimmed. */
   text(row: number): string
 }
 
 const ESC = "\x1b"
 // Either an escape sequence the card writes (CSI, parameters, final letter) or plain text.
-const TOKEN = new RegExp(`${ESC}\\[([0-9;]*)([A-Za-z])|([^${ESC}]+)`, "g")
+const TOKEN = new RegExp(`${ESC}\\[(\\??[0-9;]*)([A-Za-z])|([^${ESC}]+)`, "g")
 
-const SEQUENCE = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g")
+const SEQUENCE = new RegExp(`${ESC}\\[\\??[0-9;]*[A-Za-z]`, "g")
 
 /** The card with its CSI sequences removed. */
 export const withoutSequences = (card: string): string => card.replace(SEQUENCE, "")
@@ -51,6 +52,7 @@ export function playCard(card: string, width: number, height: number): Grid {
   const cells = Array.from({ length: height }, () => Array.from({ length: width }, blank))
   const style = { fg: undefined as string | undefined, bg: undefined as string | undefined, bold: false }
   const cursor = { row: 0, col: 0 }
+  let cursorVisible = true
   for (const [, parameters, final, text] of card.matchAll(TOKEN)) {
     if (text !== undefined) {
       for (const char of text) cells[cursor.row][cursor.col++] = { char, ...style }
@@ -60,7 +62,8 @@ export function playCard(card: string, width: number, height: number): Grid {
       Object.assign(cursor, { row: row - 1, col: col - 1 })
     } else if (final === "J" && parameters === "2") {
       for (const row of cells) row.fill({ char: " ", fg: style.fg, bg: style.bg, bold: false })
-    } else throw new Error(`unexpected sequence ${JSON.stringify(parameters + final)}`)
+    } else if (parameters === "?25" && (final === "l" || final === "h")) cursorVisible = final === "h"
+    else throw new Error(`unexpected sequence ${JSON.stringify(parameters + final)}`)
   }
-  return { cells, cursor, text: row => cells[row].map(cell => cell.char).join("").trimEnd() }
+  return { cells, cursor, cursorVisible, text: row => cells[row].map(cell => cell.char).join("").trimEnd() }
 }

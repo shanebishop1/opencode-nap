@@ -51,7 +51,7 @@ Input means a key press, a paste or mouse input. The focus options need a termin
 
 ## How it works
 
-When a window has been idle long enough, the OpenCode process replaces itself with a tiny shell script that waits. It first draws a copy of OpenCode's home screen in your theme's colours: the logo, a box saying the window is napping with the session title, and the working directory. The screen is drawn once, so it stays as it was if you resize the terminal or change the theme while the window naps; a terminal too small for it gets a line of plain text. Press any key or click to wake it: OpenCode starts again in the same window and opens the same session. The key you pressed is not sent to OpenCode.
+When a window has been idle long enough, the OpenCode process replaces itself with a tiny shell script that waits. It first draws OpenCode's logo in your theme's colours, with the working directory and a short note that the window is napping. The screen is drawn once, so it stays as it was if you resize the terminal or change the theme while the window naps; a terminal too small for it gets a line of plain text. Press any key or click to wake it: OpenCode starts again in the same window and opens the same session. The key you pressed is not sent to OpenCode.
 
 Waking takes a second or two. A running session carries on in the server the whole time, and a permission or question prompt that comes up while the window naps is waiting for you when it wakes.
 

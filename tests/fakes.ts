@@ -72,19 +72,11 @@ export function fakeEditor(text = "", traits: unknown = { owner: "opencode", rol
 
 const rgba = (r: number, g: number, b: number) => ({ r: r / 255, g: g / 255, b: b / 255, a: 1 })
 
-/**
- * OpenCode's default dark theme, as far as the nap card reads it. Like
- * OpenCode's, `decrease` knows a colour by its token object, not its value.
- */
-export const fakeTheme = () => {
-  const raised = rgba(20, 20, 20)
-  return {
-    background: { base: rgba(10, 10, 10), raised: { base: raised } },
-    text: { base: rgba(238, 238, 238), muted: rgba(128, 128, 128) },
-    categorical: [{ 200: rgba(92, 156, 245) }],
-    decrease: (color: unknown) => (color === raised ? rgba(30, 30, 30) : color),
-  }
-}
+/** OpenCode's default dark theme, as far as the nap card reads it. */
+export const fakeTheme = () => ({
+  background: { base: rgba(10, 10, 10) },
+  text: { base: rgba(238, 238, 238), muted: rgba(128, 128, 128) },
+})
 
 /** A TUI context with every internal the plugin uses; the empty prompt is focused. */
 export function fakeContext(stdin: FakeEmitter) {

@@ -28,10 +28,10 @@ function sgr({ fg, bg, bold }: Style): string {
 
 /**
  * Draws the placements over a cleared screen as one string of truecolor
- * escapes, then leaves the cursor at `cursor`. A solid `background` fills the
- * screen and sits behind every span without a background of its own.
+ * escapes, with the cursor hidden. A solid `background` fills the screen and
+ * sits behind every span without a background of its own.
  */
-export function paint(placements: Placement[], background: Color | undefined, cursor: { row: number; col: number }): string {
+export function paint(placements: Placement[], background: Color | undefined): string {
   const fill = background && background.a > 0 ? background : undefined
   const at = (row: number, col: number) => `${ESC}[${row + 1};${col + 1}H`
   let current = sgr({ bg: fill })
@@ -45,5 +45,5 @@ export function paint(placements: Placement[], background: Color | undefined, cu
       out += text
     }
   }
-  return `${out}${ESC}[0m${at(cursor.row, cursor.col)}`
+  return `${out}${ESC}[0m${ESC}[?25l`
 }

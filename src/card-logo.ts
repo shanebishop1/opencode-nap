@@ -1,5 +1,5 @@
 import { tint, type Color } from "./color.js"
-import { go, logo } from "./logo.js"
+import { logo } from "./logo.js"
 import type { Palette } from "./palette.js"
 import type { Span } from "./screen.js"
 import { textWidth } from "./text.js"
@@ -19,11 +19,10 @@ function lineSpans(line: string, fg: Color, bold: boolean, palette: Palette): Sp
   })
 }
 
-/** The logo's lines for a terminal size: none when short, smaller when narrow. */
+/** The logo's lines for a terminal size: none when short, stacked when narrow. */
 export function logoLines(width: number, height: number, palette: Palette): Span[][] {
   const { text, muted } = palette
   if (height < 12) return []
-  if (width < 22) return go.right.slice(1).map(line => lineSpans(line, text, true, palette))
   if (width < 44) {
     return [
       ...logo.left.slice(1).map(line => lineSpans(line, muted, false, palette)),
