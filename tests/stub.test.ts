@@ -72,12 +72,13 @@ const sleep = (ms: number) => new Promise(done => setTimeout(done, ms))
  * has not exited within `timeoutMs` is stopped and reported as timed out.
  */
 async function runStub(
-  input: { card?: string; opencodePath?: string; args?: string[] },
+  input: { card?: string; wakeOnFocus?: boolean; opencodePath?: string; args?: string[] },
   steps: Step[],
   timeoutMs = 6_000,
 ): Promise<Run> {
   const exec = buildStubExec({
     card: input.card ?? CARD,
+    wakeOnFocus: input.wakeOnFocus ?? false,
     opencodePath: input.opencodePath ?? opencode,
     args: input.args ?? [],
   })
@@ -124,13 +125,14 @@ describe("buildStubExec", () => {
   it("passes every value as a positional argument after the script", () => {
     const exec = buildStubExec({
       card: "My session",
+      wakeOnFocus: true,
       opencodePath: "/opt/opencode",
       args: ["-s", "ses_1", "$(touch x)"],
     })
 
     expect(exec.file).toBe("/bin/sh")
     expect(exec.argv).toEqual([
-      "sh", "-c", STUB_SCRIPT, "sh", "My session", "/opt/opencode", "-s", "ses_1", "$(touch x)",
+      "sh", "-c", STUB_SCRIPT, "sh", "My session", "focus", "/opt/opencode", "-s", "ses_1", "$(touch x)",
     ])
     expect(STUB_SCRIPT).not.toContain("My session")
   })
@@ -194,6 +196,25 @@ describe("stub under a terminal", () => {
     expect(run.status).toBe(0)
     expect(run.fake?.argv).toEqual(TRICKY_ARGS)
     expect(run.fake?.markKept).toBe(true)
+  })
+
+  it("ac-focus-wake: with focus waking, focus in wakes it and reporting is off again for OpenCode", async () => {
+    const run = await runStub({ wakeOnFocus: true }, wakeSteps([{ send: `${ESC}[O` }, { sleep: 300 }, { send: `${ESC}[I` }]))
+    const nap = napOutput(run)
+    expect(nap.lastIndexOf(`${ESC}[?1004l`)).toBeGreaterThan(nap.indexOf(`${ESC}[?1004h`))
+    expect(run.status).toBe(0)
+    expect(run.fake?.stdin).toBe(PROBE)
+  })
+
+  it("ac-focus-wake: focus out alone leaves it napping", async () => {
+    const run = await runStub({ wakeOnFocus: true }, [{ expect: ARMED }, { send: `${ESC}[O` }, { expect: "@@READY@@" }], 1_500)
+    expect(run.timedOut).toBe(true)
+    expect(run.output).not.toContain("@@READY@@")
+  })
+
+  it("ac-focus-no-wake: without focus waking, focus reporting stays off", async () => {
+    const run = await runStub({}, wakeSteps([{ send: SPACE }]))
+    expect(napOutput(run)).not.toContain(`${ESC}[?1004h`)
   })
 
   it("ac-wake-key: the wake key does not reach OpenCode", async () => {

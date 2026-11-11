@@ -20,7 +20,7 @@ let server: { process: PtyProcess; url: string }
 
 /** The shell's resident memory once a stub with this card is napping, started like the others in this run. */
 async function stubRss(name: string, card: string): Promise<number> {
-  const stub = buildStubExec({ card, opencodePath: "/bin/true", args: [] })
+  const stub = buildStubExec({ card, wakeOnFocus: false, opencodePath: "/bin/true", args: [] })
   const pty = await startCommand(scratch, name, [stub.file, ...stub.argv.slice(1)])
   await waitUntil(() => (pty.output().includes("\x1b[?1000h") ? true : undefined), 10_000, `the ${name} stub to wait for a key`)
   await waitUntil(async () => ((await processTree(pty.pid)).count >= 2 ? true : undefined), 5_000, `the ${name} stub's reader`)

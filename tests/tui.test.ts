@@ -49,6 +49,7 @@ describe("startNap", () => {
         home: "/home/shane",
         version: "2.2.4",
       }),
+      wakeOnFocus: false,
       opencodePath: "/opt/opencode/bin/opencode",
       args: ["--server", SERVER_URL, "-s", SESSION_ID],
     })
@@ -63,7 +64,7 @@ describe("startNap", () => {
     const { fake } = await start({ edit: context => { context.route = { type: "home" } } })
     await fake.advance(IDLE_MS + 5_000)
     const [card, ...rest] = fake.execs[0].argv.slice(4)
-    expect(rest).toEqual(["/opt/opencode/bin/opencode", "--server", SERVER_URL])
+    expect(rest).toEqual(["keys", "/opt/opencode/bin/opencode", "--server", SERVER_URL])
     expect(withoutSequences(card)).toContain("Press any key or click to wake.")
     expect(withoutSequences(card)).toContain("/work/project")
   })
@@ -97,7 +98,7 @@ describe("startNap", () => {
   it("makes a relative directory argument absolute", async () => {
     const { fake } = await start({ args: ["--server", SERVER_URL, "project"] })
     await fake.advance(IDLE_MS + 5_000)
-    expect(fake.execs[0].argv.slice(6)).toEqual(["--server", SERVER_URL, "/work/project", "-s", SESSION_ID])
+    expect(fake.execs[0].argv.slice(7)).toEqual(["--server", SERVER_URL, "/work/project", "-s", SESSION_ID])
   })
 
   it("ac-exec-fails: an execve that throws turns the plugin off without a retry", async () => {
