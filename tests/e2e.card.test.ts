@@ -8,8 +8,7 @@ import { NapRun, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-ru
 import { processTree } from "./e2e/processes.js"
 import { stripEscapes, type PtyProcess } from "./e2e/pty.js"
 
-const napOptions = { idleMinutes: 0.25 }
-const NAP_TIMEOUT_MS = 40_000
+import { napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 // The card is a few KB of argument that the shell copies once to print. Two
 // stubs that differ only in their card differ by far less than this, so a card
 // that cost a loop, buffer or child process would show.

@@ -81,7 +81,7 @@ npm run build
 npm run test:e2e   # drives real OpenCode windows against a local fake model
 ```
 
-The end-to-end tests never call a hosted model. [docs/macos-checklist.md](docs/macos-checklist.md) covers checking a real terminal by hand.
+The end-to-end runner builds and installs the packed package once, then runs up to eight test files in separate processes. They share only installed dependencies: each file gets its own HOME, XDG directories, project, temporary files and private servers. Short idle settings exercise the real nap timers without waiting minutes. The tests never call a hosted model. [docs/macos-checklist.md](docs/macos-checklist.md) covers checking a real terminal by hand.
 
 ## License
 

@@ -4,6 +4,7 @@ import { cleanup, cliVersion, createScratch, e2eEnabled, startCommand, type Scra
 import { NapRun, SPACE, waitUntil, Watch } from "./e2e/nap-run.js"
 import { processTree } from "./e2e/processes.js"
 import { pythonPath } from "./e2e/pty.js"
+import { napOptions } from "./e2e/timing.js"
 
 // The default service listens on a fixed port (49374, or 49375 for local
 // builds) and can replace a running service, so a TUI without --server only
@@ -89,7 +90,7 @@ describe.skipIf(!runnable)(`OpenCode ${cliVersion}: the default service, in a pr
 
   it("ac-both-servers: a TUI on the default service (no --server) naps and wakes", async () => {
     if (!("prefix" in isolation)) throw new Error("unreachable")
-    const watch = await Watch.configure(scratch, "service", { idleMinutes: 0.25 })
+    const watch = await Watch.configure(scratch, "service", napOptions)
     // The TUI finds the service through its scratch registration, not a password.
     const env: Record<string, string> = { ...scratch.env, PROOF }
     delete env.OPENCODE_PASSWORD

@@ -17,11 +17,10 @@ import {
   type Scratch,
 } from "./e2e/harness.js"
 import { fakeProviderConfig, PERMISSION_DIALOG } from "./e2e/fake-provider.js"
-import { NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch, type Entry } from "./e2e/nap-run.js"
+import { NapRun, SPACE, stripEscapesSince, waitUntil, Watch, type Entry } from "./e2e/nap-run.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
-const napOptions = { idleMinutes: 0.25 }
-const NAP_TIMEOUT_MS = 40_000
+import { napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
@@ -111,7 +110,6 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     const { whileNapped } = await napAndWake(run)
     expect(whileNapped, await run.context()).toEqual([])
     await promptWhere(watch, prompt => prompt.focused, 30_000)
-    await sleep(1_000)
     expect((await watch.ask("prompt")).result.text).toBe("")
     expect((await watch.napEntries()).map(entry => entry.message)).not.toContain("draft restored")
   }, 240_000)
@@ -123,7 +121,6 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     const { whileNapped } = await napAndWake(run)
     expect(whileNapped, await run.context()).toEqual([])
     await promptWhere(watch, prompt => prompt.focused, 30_000)
-    await sleep(1_000)
     expect((await watch.ask("prompt")).result.text).toBe("")
   }, 240_000)
 

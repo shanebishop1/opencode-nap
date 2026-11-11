@@ -8,6 +8,7 @@ import {
 import { CARD, readJsonLines } from "./e2e/nap-run.js"
 import { processTree } from "./e2e/processes.js"
 import type { PtyProcess } from "./e2e/pty.js"
+import { napOptions } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string } | undefined
@@ -25,7 +26,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: opencode.json configuratio
   for (const source of ["project", "global", "both", "override"] as const) {
     it(`applies ${source} options with one watcher per window`, async () => {
       const debugLogFile = join(scratch.root, `${source}.nap.jsonl`)
-      const options = { idleMinutes: 0.15, debugLogFile }
+      const options = { ...napOptions, debugLogFile }
       const entry = { package: installedPackage(scratch), options }
       await writeCliConfig(scratch, source === "both" ? [installedPackage(scratch)] : source === "override" ? [entry] : [])
       const serverEntry = source === "override" ? { ...entry, options: { enabled: false } } : entry

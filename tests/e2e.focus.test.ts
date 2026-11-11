@@ -18,7 +18,7 @@ const FOCUS_IN = "\x1b[I"
 const FOCUS_OUT = "\x1b[O"
 const FOCUS_MODE_QUERY = "\x1b[?1004$p"
 const FOCUS_MODE_REPLY = "\x1b[?1004;2$y"
-const NAP_TIMEOUT_MS = 40_000
+import { IDLE_MS, napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
@@ -59,8 +59,7 @@ async function open(name: string, options: Record<string, unknown>) {
   tui.write(FOCUS_MODE_REPLY)
   const watchingAt = await run.waitForWatching(1)
   await waitUntil(() => focusReporting(tui.output()) || undefined, 30_000, "focus reporting on")
-  // Let the first screen settle so the reports reach a running renderer.
-  await sleep(2_000)
+  await run.waitForInteractive(0)
   return { tui, run, watchingAt, messages, napRule, focus }
 }
 
@@ -95,7 +94,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
     expect(focus(FOCUS_OUT), await run.context()).toBe(true)
     await sleep(1_000)
     expect(focus(FOCUS_IN), await run.context()).toBe(true)
-    await sleep(8_000)
+    await sleep(2_200)
     expect(await messages(), await run.context()).toEqual(["loaded", "watching"])
     expect(await leader(tui.pid), await run.context()).toBe(before)
 
@@ -105,13 +104,12 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
   }, 120_000)
 
   it("ac-blur-idle: naps after blurIdleMinutes while unfocused, long before idleMinutes", async () => {
-    const { run, watchingAt, napRule, focus } = await open("blur-idle", { idleMinutes: 5, blurIdleMinutes: 0.25 })
+    const { run, watchingAt, napRule, focus } = await open("blur-idle", { idleMinutes: 5, blurIdleMinutes: napOptions.idleMinutes })
     expect(focus(FOCUS_OUT), await run.context()).toBe(true)
     const napped = await run.waitForNap(NAP_TIMEOUT_MS)
     expect(await napRule(), await run.context()).toBe("blurIdle")
-    // 15 s idle from the plugin's start, checked at most every 5 s, plus the exec.
-    expect(napped.at - watchingAt, await run.context()).toBeGreaterThanOrEqual(14_000)
-    expect(napped.at - watchingAt, await run.context()).toBeLessThan(15_000 + 15_000)
+    expect(napped.at - watchingAt, await run.context()).toBeGreaterThanOrEqual(IDLE_MS - 100)
+    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
     console.log(`blurIdle: plugin start to card ${napped.at - watchingAt} ms`)
   }, 120_000)
 
@@ -136,8 +134,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
     console.log(`no-wake: Space to plugin running ${wokeAt - spaceAt} ms`)
   }, 120_000)
 
-  it("ac-focus-defaults, ac-focus-not-input: with no focus option, focus reports every few seconds neither nap nor delay the idle nap", async () => {
-    const { run, watchingAt, messages, napRule, focus } = await open("defaults", { idleMinutes: 0.25 })
+  it("ac-focus-defaults, ac-focus-not-input: with no focus option, repeated focus reports neither nap nor delay the idle nap", async () => {
+    const { run, watchingAt, messages, napRule, focus } = await open("defaults", napOptions)
     let reports = 0
     let lastReportAt = 0
     let next = FOCUS_OUT
@@ -148,15 +146,15 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
         lastReportAt = Date.now()
       }
       next = next === FOCUS_OUT ? FOCUS_IN : FOCUS_OUT
-      await sleep(3_000)
+      await sleep(200)
     }
     const napped = await run.waitForNap(10_000)
     expect(await napRule(), await run.context()).toBe("idle")
     expect(reports, await run.context()).toBeGreaterThanOrEqual(4)
-    expect(napped.at - watchingAt, await run.context()).toBeGreaterThanOrEqual(14_000)
-    expect(napped.at - watchingAt, await run.context()).toBeLessThan(15_000 + 15_000)
-    // A report that restarted the idle time would put the nap 15 s after it.
-    expect(napped.at - lastReportAt, await run.context()).toBeLessThan(15_000)
+    expect(napped.at - watchingAt, await run.context()).toBeGreaterThanOrEqual(IDLE_MS - 100)
+    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
+    // A report that restarted the idle time would put the nap IDLE_MS after it.
+    expect(napped.at - lastReportAt, await run.context()).toBeLessThan(IDLE_MS)
     console.log(`defaults: ${reports} focus reports, the last ${napped.at - lastReportAt} ms before the card; ` +
       `plugin start to card ${napped.at - watchingAt} ms`)
   }, 120_000)

@@ -1,15 +1,14 @@
 import { rmSync } from "fs"
-import { cp, mkdir, mkdtemp, rm, writeFile } from "fs/promises"
+import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises"
 import { randomBytes } from "crypto"
 import { tmpdir } from "os"
 import { join, resolve } from "path"
-import { $ } from "bun"
+import { install } from "./install.js"
 import { descendants, listProcesses } from "./processes.js"
 import { killGroup, startPty, type PtyProcess } from "./pty.js"
 
 export const e2eEnabled = process.env.NAP_E2E === "1"
-export const cliVersion = process.env.NAP_E2E_CLI_VERSION ?? "2.2.4"
-const repositoryRoot = resolve(import.meta.dir, "..", "..")
+export { cliVersion } from "./install.js"
 
 /**
  * An isolated OpenCode setup: HOME, every XDG directory and TMPDIR live in
@@ -81,7 +80,7 @@ const isolatedEnvironment = (root: string, home: string, password: string): Reco
   }
 }
 
-/** Packs this repository and installs the tarball and the OpenCode CLI into a fresh scratch project. */
+/** Isolates mutable state while sharing the suite's installed consumer files. */
 export async function createScratch(): Promise<Scratch> {
   installSignalCleanup()
   const root = await mkdtemp(join(tmpdir(), "opencode-nap-e2e-"))
@@ -94,21 +93,10 @@ export async function createScratch(): Promise<Scratch> {
     .map(path => mkdir(path, { recursive: true })))
   await mkdir(env.XDG_RUNTIME_DIR, { recursive: true, mode: 0o700 })
 
-  const archive = (await $`npm run build && npm pack --ignore-scripts --pack-destination ${root}`
-    .cwd(repositoryRoot)
-    .quiet()
-    .text())
-    .trim()
-    .split("\n")
-    .pop()
-  if (!archive) throw new Error("npm pack did not return an archive name")
-
-  // npm runs with the caller's environment so it can use its own cache and
-  // registry settings; only OpenCode itself runs isolated.
   await writeFile(join(project, "package.json"), JSON.stringify({ private: true, type: "module" }))
-  await $`npm install --no-audit --no-fund ${join(root, archive)} ${`@opencode/cli@${cliVersion}`}`
-    .cwd(project)
-    .quiet()
+  const shared = process.env.NAP_E2E_INSTALL
+  if (shared) await symlink(join(shared, "node_modules"), join(project, "node_modules"), "dir")
+  else await install(project)
   const scratch = { root, project, env, password, binary: join(project, "node_modules", ".bin", "opencode") }
   // Providers are denied outright, so nothing can reach a hosted model.
   await writeServerConfig(scratch, { enabled_providers: [] })

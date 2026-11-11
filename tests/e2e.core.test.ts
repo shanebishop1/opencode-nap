@@ -17,9 +17,7 @@ import { CLICK, NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch } from
 import { processTree } from "./e2e/processes.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
-// 15 s idle, checked at most every 5 s.
-const napOptions = { idleMinutes: 0.25 }
-const NAP_TIMEOUT_MS = 40_000
+import { IDLE_MS, napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
@@ -49,13 +47,11 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
 
     const watchingAt = await run.waitForWatching(1)
     await run.waitForInteractive(0)
-    await sleep(3_000)
     const awake = await processTree(tui.pid)
     expect(awake.leader, await run.context()).toContain("opencode")
 
     const napped = await run.waitForNap(NAP_TIMEOUT_MS)
-    // The idle time is 15 s; the nap is due within 15 s after that.
-    expect(napped.at - watchingAt, await run.context()).toBeLessThan(15_000 + 15_000)
+    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
     expect(napped.rssKiB, await run.context()).toBeLessThan(5 * 1024)
 
     const offset = tui.output().length
@@ -70,14 +66,13 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     expect((await watch.napEntries())[2].detail?.route).toEqual({ type: "session", sessionID })
     // The Space was swallowed by the stub, so the woken prompt is empty.
     expect(interactive.prompt, await run.context()).toBe("")
-    await sleep(1_000)
     const state = (await watch.ask("state")).result
     expect(state.prompt).toBe("")
     expect(state.route).toEqual({ type: "session", sessionID })
     const woken = await processTree(tui.pid)
 
     console.log(`nap summary: awake ${(awake.rssKiB / 1024).toFixed(1)} MB RSS; napped ${(napped.rssKiB / 1024).toFixed(1)} MB RSS ` +
-      `over ${napped.count} processes; idle to card ${napped.at - watchingAt} ms (idle time 15000 ms); ` +
+      `over ${napped.count} processes; idle to card ${napped.at - watchingAt} ms (idle time ${IDLE_MS} ms); ` +
       `Space to prompt focused ${interactive.time - spaceAt} ms, drawn ${drawnAt - spaceAt} ms; woken ${(woken.rssKiB / 1024).toFixed(1)} MB RSS`)
   }, 180_000)
 
@@ -105,7 +100,6 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     expect((await watch.ask("environment")).result).toEqual({ markerKept: true, directoryKept: true })
     // No part of the mouse sequence reached the prompt.
     expect(interactive.prompt, await run.context()).toBe("")
-    await sleep(1_000)
     expect((await watch.ask("state")).result.prompt).toBe("")
   }, 180_000)
 
@@ -149,7 +143,6 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
 
     const argv = (await watch.ask("state")).result.argv
     expect(argv, await run.context()).toEqual(["--server", server.url, scratch.project, "-s", sessionID])
-    await sleep(2_000)
     expect((await watch.ask("state")).result.prompt).toBe("")
     expect(await messagesOf(sessionID)).toEqual([])
   }, 180_000)
@@ -166,8 +159,10 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     const observe = async (run: NapRun) => {
       const state = (await run.watch.ask("state")).result
       await run.watch.ask("history-back")
-      await sleep(300)
-      const recalled = (await run.watch.ask("state")).result.prompt
+      const recalled = await waitUntil(async () => {
+        const prompt = (await run.watch.ask("state")).result.prompt
+        return prompt === "NAP_E2E_HISTORY" ? prompt : undefined
+      }, 5_000, "recalled prompt history")
       await run.watch.ask("clear")
       return { route: state.route, tabs: [...state.tabs].sort(), stored: state.stored, recalled }
     }
@@ -180,7 +175,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     expect((await watch.ask("tab", other)).result.opened, await run.context()).toBe(true)
     const beforeNap = await observe(run)
     // Written as late as possible before the nap.
-    await sleep(Math.max(0, watchingAt + 12_000 - Date.now()))
+    await sleep(Math.max(0, watchingAt + IDLE_MS - 400 - Date.now()))
     expect((await watch.ask("store", "written-before-nap")).result.stored).toBe("written-before-nap")
     await run.waitForNap(NAP_TIMEOUT_MS)
     const spaceAt = await run.wake(SPACE)
