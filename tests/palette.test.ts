@@ -27,8 +27,6 @@ describe("readPalette", () => {
       background: fromInts(10, 10, 10),
       text: fromInts(238, 238, 238),
       muted: fromInts(128, 128, 128),
-      panel: fromInts(30, 30, 30),
-      accent: fromInts(92, 156, 245),
     })
   })
 
@@ -36,17 +34,15 @@ describe("readPalette", () => {
     expect(readPalette(fakeTheme())).toEqual(defaultPalette)
   })
 
-  it("lets a transparent prompt show the background through", () => {
-    const theme = { ...fakeTheme(), decrease: () => ({ r: 0, g: 0, b: 0, a: 0 }) }
-    expect(readPalette(theme)?.panel).toEqual(fromInts(10, 10, 10))
+  it("blends translucent text over the background, as the terminal shows it", () => {
+    const theme = { ...fakeTheme(), text: { base: fromInts(238, 238, 238), muted: { ...fromInts(238, 238, 238), a: 0.5 } } }
+    expect(readPalette(theme)?.muted).toEqual(fromInts(124, 124, 124))
   })
 
   it("gives up when a token is missing, unreadable or throws", () => {
     expect(readPalette(undefined)).toBeUndefined()
     expect(readPalette({ ...fakeTheme(), text: {} })).toBeUndefined()
-    expect(readPalette({ ...fakeTheme(), categorical: [] })).toBeUndefined()
-    expect(readPalette({ ...fakeTheme(), decrease: undefined })).toBeUndefined()
-    expect(readPalette({ ...fakeTheme(), decrease: () => { throw new Error("no") } })).toBeUndefined()
+    expect(readPalette({ ...fakeTheme(), background: {} })).toBeUndefined()
     expect(readPalette({ ...fakeTheme(), get background(): never { throw new Error("no") } })).toBeUndefined()
   })
 })

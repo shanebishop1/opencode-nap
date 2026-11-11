@@ -4,7 +4,7 @@ import { installedPackage, installObserver, writeCliConfig, type Scratch } from 
 import { processTree } from "./processes.js"
 import { stripEscapes, type PtyProcess } from "./pty.js"
 
-export const CARD = /Napping… press any key or click to wake/g
+export const CARD = /Press any key or click to wake\./g
 export const SPACE = " "
 // A left click, press and release, in SGR mouse encoding.
 export const CLICK = "\x1b[<0;20;10M\x1b[<0;20;10m"

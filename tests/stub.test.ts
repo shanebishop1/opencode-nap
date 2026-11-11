@@ -183,8 +183,8 @@ describe("stub under a terminal", () => {
     const run = await runStub({}, wakeSteps([{ send: SPACE }]))
     const woken = run.output.slice(run.output.indexOf(ARMED))
     expect(woken).toContain(`${ESC}[?1000l${ESC}[?1006l`)
-    expect(woken.indexOf(`${ESC}[0m${ESC}[2J${ESC}[H`)).toBeGreaterThan(woken.indexOf(`${ESC}[?1000l`))
-    expect(woken.indexOf(`${ESC}[0m${ESC}[2J${ESC}[H`)).toBeLessThan(woken.indexOf("@@READY@@"))
+    expect(woken.indexOf(`${ESC}[0m${ESC}[?25h${ESC}[2J${ESC}[H`)).toBeGreaterThan(woken.indexOf(`${ESC}[?1000l`))
+    expect(woken.indexOf(`${ESC}[0m${ESC}[?25h${ESC}[2J${ESC}[H`)).toBeLessThan(woken.indexOf("@@READY@@"))
   })
 
   it("ac-wake-key: a key wakes OpenCode with exactly its arguments and environment", async () => {

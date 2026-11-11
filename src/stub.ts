@@ -34,8 +34,8 @@ dd bs=1 count=1 of=/dev/null 2>/dev/null
 printf '\\033[?1000l\\033[?1006l'
 stty min 0 time 1 2>/dev/null
 while IFS= read -r drained; do :; done
-# The card's colours and cursor must not outlive it.
-printf '\\033[0m\\033[2J\\033[H'
+# The card's colours and hidden cursor must not outlive it.
+printf '\\033[0m\\033[?25h\\033[2J\\033[H'
 stty sane 2>/dev/null
 if [ -f "$opencode" ] && [ -x "$opencode" ]; then exec "$opencode" "$@"; fi
 quote() {

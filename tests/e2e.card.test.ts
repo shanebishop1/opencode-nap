@@ -38,7 +38,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
 
   afterAll(cleanup, 60_000)
 
-  it("looks like the home screen and costs the napping shell no memory", async () => {
+  it("shows the logo and message and costs the napping shell no memory", async () => {
     const watch = await Watch.configure(scratch, "card", napOptions)
     const sessionID = await createSession(scratch, server.url)
     const tui = await startTuiWith(scratch, "card", ["--server", server.url, "-s", sessionID, scratch.project])
@@ -48,12 +48,10 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
     const napped = await run.waitForNap(NAP_TIMEOUT_MS)
     const drawn = stripEscapes(tui.output().slice(tui.output().lastIndexOf("\x1b[2J")))
     expect(drawn, await run.context()).toContain("█▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█")
-    expect(drawn).toContain("Napping… press any key or click to wake")
-    expect(drawn).toContain("Napping · ")
-    expect(drawn).toContain("work keeps running")
+    expect(drawn).toContain("Napping to save memory. Press any key or click to wake.")
+    expect(drawn).toContain("Sessions keep running in the background.")
     // Long scratch paths are cut to their last segments, so only the end is certain.
     expect(drawn).toContain("/project")
-    expect(drawn).toContain("any key wake")
     expect(drawn).toContain("2.2.4")
     // The stub prints once and waits: one shell and its reader, nothing else,
     // and the shell that waits no longer carries the card.
@@ -78,8 +76,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
     const offset = tui.output().length
     const spaceAt = await run.wake(SPACE)
     await run.waitForInteractive(spaceAt)
-    // The card's colours and screen are cleared before OpenCode starts.
-    expect(tui.output().slice(offset)).toContain("\x1b[0m\x1b[2J\x1b[H")
-    expect(stripEscapesSince(tui, offset)).not.toContain("Napping…")
+    // The card's colours, hidden cursor and screen are cleared before OpenCode starts.
+    expect(tui.output().slice(offset)).toContain("\x1b[0m\x1b[?25h\x1b[2J\x1b[H")
+    expect(stripEscapesSince(tui, offset)).not.toContain("Press any key or click to wake.")
   }, 180_000)
 })

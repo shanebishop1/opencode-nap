@@ -64,7 +64,7 @@ describe("startNap", () => {
     await fake.advance(IDLE_MS + 5_000)
     const [card, ...rest] = fake.execs[0].argv.slice(4)
     expect(rest).toEqual(["/opt/opencode/bin/opencode", "--server", SERVER_URL])
-    expect(withoutSequences(card)).toContain("Napping · work keeps running")
+    expect(withoutSequences(card)).toContain("Press any key or click to wake.")
     expect(withoutSequences(card)).toContain("/work/project")
   })
 
@@ -78,7 +78,7 @@ describe("startNap", () => {
     it("uses OpenCode's default colours when the theme cannot be read", async () => {
       const card = await cardOf({ edit: context => { context.theme = undefined } })
       expect(card).toContain(";48;2;10;10;10m")
-      expect(withoutSequences(card)).toContain("Fix the flaky test")
+      expect(withoutSequences(card)).toContain("Press any key or click to wake.")
     })
 
     it("uses the plain text when the terminal size is unknown", async () => {
