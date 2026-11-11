@@ -6,7 +6,7 @@ On Linux, measured window RSS drops from about 152 MB to about 4 MB, including c
 
 ## Install
 
-The plugin needs OpenCode 2.2.4 or later. It is not published to npm yet. For this private local build, [build, pack and install it](docs/macos-checklist.md#setup), then use the absolute installed-directory path below.
+The plugin needs OpenCode 2.2.4 or later. It is not published to npm yet. Until it is, [build, pack and install it](docs/macos-checklist.md#setup), then use the absolute installed-directory path below.
 
 OpenCode 2 TUI plugins are listed in `cli.json`, not `opencode.json`. The file is `$XDG_CONFIG_HOME/opencode/cli.json`, usually `~/.config/opencode/cli.json`:
 
@@ -69,10 +69,8 @@ If the OpenCode binary is no longer executable when you wake the window, for exa
 ## Platforms
 
 - **Linux:** supported.
-- **macOS:** [automated checks passed at `8022138`](https://github.com/shanebishop1/opencode-nap/actions/runs/42986106849), before the final 0.1.0 candidate changes. The default-service test was skipped because it needs Linux network namespaces. Terminals checked by hand: none yet. See [the macOS checklist](docs/macos-checklist.md).
+- **macOS:** [automated checks passed at `8022138`](https://github.com/shanebishop1/opencode-nap/actions/runs/42986106849), before the last 0.1.0 changes. The default-service test was skipped because it needs Linux network namespaces. Terminals checked by hand: none yet. See [the macOS checklist](docs/macos-checklist.md).
 - **Windows:** not supported. The plugin does nothing there.
-
-This local 0.1.0 candidate has not passed hosted CI: current runs are blocked by GitHub Actions billing limits.
 
 The plugin works with the background service (the default) and with `--server <url>`.
 
