@@ -28,6 +28,7 @@ describe("park", () => {
       env: { PATH: "/usr/bin" },
       session: () => ({ title: "Title", directory: "/work/project" }),
       card: session => `card for ${String(session.title)} in ${String(session.directory)}`,
+      wakeOnFocus: false,
       stillDue: () => true,
       execve: (...args) => {
         calls.push(args)
@@ -40,7 +41,7 @@ describe("park", () => {
   it("execs the stub with the card, the wake command line and the environment", () => {
     const parkInput = input()
     expect(park(parkInput)).toEqual({ status: "exec-failed", error: new Error("ENOENT") })
-    const stub = buildStubExec({ card: "card for Title in /work/project", opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
+    const stub = buildStubExec({ card: "card for Title in /work/project", wakeOnFocus: false, opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
     expect(parkInput.calls).toEqual([[stub.file, stub.argv, { PATH: "/usr/bin" }]])
   })
 

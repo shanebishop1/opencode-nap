@@ -113,16 +113,33 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
     console.log(`blurIdle: plugin start to card ${napped.at - watchingAt} ms`)
   }, 120_000)
 
-  it("ac-focus-no-wake: focus changes leave a napping window napping; Space wakes it", async () => {
-    const { tui, run, messages, focus } = await open("no-wake", { idleMinutes: 5, napOnBlur: true })
+  it("ac-focus-wake: a window that napped on focus out ignores focus out and wakes on focus in", async () => {
+    const { tui, run, messages, focus } = await open("focus-wake", { idleMinutes: 5, napOnBlur: true })
     expect(focus(FOCUS_OUT), await run.context()).toBe(true)
     await run.waitForNap(15_000)
     const napped = await leader(tui.pid)
+    // The stub reports focus for a nap that losing focus started.
+    expect(focus(FOCUS_OUT), await run.context()).toBe(true)
+    await sleep(1_000)
+    expect(await leader(tui.pid), await run.context()).toBe(napped)
+
+    const focusAt = Date.now()
+    expect(focus(FOCUS_IN), await run.context()).toBe(true)
+    const wokeAt = await run.waitForWatching(2)
+    expect(await leader(tui.pid), await run.context()).toContain("opencode")
+    expect(await messages(), await run.context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
+    console.log(`focus-wake: focus in to plugin running ${wokeAt - focusAt} ms`)
+  }, 120_000)
+
+  it("ac-focus-no-wake: focus changes leave an idle-timer nap napping; Space wakes it", async () => {
+    const { tui, run, messages, focus } = await open("no-wake", napOptions)
+    await run.waitForNap(NAP_TIMEOUT_MS)
+    const napped = await leader(tui.pid)
     const offset = tui.output().length
-    // The stub turned focus reporting off, so a terminal sends nothing on a focus change.
+    // The idle timer's nap leaves focus reporting off, so a terminal sends nothing on a focus change.
     const sent = [FOCUS_IN, FOCUS_OUT, FOCUS_IN, FOCUS_OUT].map(report => focus(report))
     expect(sent, await run.context()).toEqual([false, false, false, false])
-    await sleep(3_000)
+    await sleep(1_000)
     expect(await messages(), await run.context()).toEqual(["loaded", "watching", "napping"])
     expect(await leader(tui.pid), await run.context()).toBe(napped)
     expect(stripEscapesSince(tui, offset).trim(), await run.context()).toBe("")

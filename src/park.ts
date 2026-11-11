@@ -34,6 +34,8 @@ export interface ParkInput {
   session: (sessionID: string) => SessionFacts
   /** Builds the nap screen the stub prints. */
   card: (session: SessionFacts) => string
+  /** Whether regaining focus wakes the nap, as well as a key or click. */
+  wakeOnFocus: boolean
   /** Synchronously saves the draft; returns extra environment for the woken TUI, or a deferral. */
   beforeNap?: () => Record<string, string> | NapDeferral | undefined
   /** Checked after draft capture, in case input arrived since the nap was decided. */
@@ -60,6 +62,7 @@ export function park(input: ParkInput): ParkResult {
 
   const stub = buildStubExec({
     card: input.card(session),
+    wakeOnFocus: input.wakeOnFocus,
     opencodePath: input.opencodePath,
     args: wake.args,
   })
