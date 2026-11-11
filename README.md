@@ -3,9 +3,13 @@
 [![npm](https://img.shields.io/npm/v/opencode-nap?logo=npm&style=flat-square)](https://www.npmjs.com/package/opencode-nap)
 [![License](https://img.shields.io/npm/l/opencode-nap?style=flat-square)](./LICENSE)
 
-An OpenCode 2 plugin that puts idle terminal windows to sleep to free memory, and wakes them into the same session when you press a key or click.
+An OpenCode 2 plugin that puts idle terminal windows to sleep to free memory, and wakes them into the same session when you come back: refocus the window, or press a key or click.
 
-Each open OpenCode window holds around 150 MB, even when you are not using it. A napping window holds about 4 MB. Work keeps running while a window naps, because sessions live in the OpenCode server, not in the window.
+![Ten idle windows: 894 MiB awake, 3 MiB napping. OpenCode in total, server included: 1,172 MiB awake, 294 MiB napping.](docs/memory.svg)
+
+<sub>OpenCode 2.2.4 on Linux, ten windows on the start screen, measured as proportional set size (PSS), which counts memory that processes share only once. Windows with long sessions use more while awake (134 MiB each across ten long real sessions) and the same 0.3 MiB napping, so everyday savings are larger. Measure your own with <code>scripts/measure-memory.sh</code>.</sub>
+
+Work keeps running while a window naps, because sessions live in the OpenCode server, not in the window.
 
 It works in any terminal, inside or outside tmux, with nothing else to install.
 
