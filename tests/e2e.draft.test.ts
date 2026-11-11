@@ -98,6 +98,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     const after = await promptWhere(watch, prompt => prompt.text === draft, 30_000)
     expect(after.cursorOffset).toBe(before.cursorOffset)
     expect(after.logicalCursor).toEqual(before.logicalCursor)
+    await waitUntil(() => (stripEscapesSince(tui, offset).includes("third") ? true : undefined),
+      10_000, "the restored draft to be drawn")
     expect(stripEscapesSince(tui, offset)).toContain("third")
     expect(draftPaths()).toEqual([])
     expect((await watch.ask("state")).result.napEnv).toEqual([])
