@@ -17,7 +17,7 @@ import { CLICK, NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch } from
 import { processTree } from "./e2e/processes.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
-import { IDLE_MS, napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
+import { IDLE_MS, napOptions, NAP_SLACK_MS, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
@@ -51,7 +51,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     expect(awake.leader, await run.context()).toContain("opencode")
 
     const napped = await run.waitForNap(NAP_TIMEOUT_MS)
-    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
+    expect(napped.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + NAP_SLACK_MS)
     expect(napped.rssKiB, await run.context()).toBeLessThan(5 * 1024)
 
     const offset = tui.output().length

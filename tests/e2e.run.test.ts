@@ -19,7 +19,7 @@ import { fakeProviderConfig, PERMISSION_DIALOG } from "./e2e/fake-provider.js"
 import { NapRun, readJsonLines, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
-import { IDLE_MS, napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
+import { IDLE_MS, napOptions, NAP_SLACK_MS, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 // Longer than the idle time plus the check interval, so the nap lands mid-stream.
 const SLOW = { chunks: 10, delayMs: 500 }
 // Text only the question dialog shows.
@@ -103,7 +103,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: runs and prompts survive a
     await prompt(sessionID, "NAP_PERM pending at the nap")
     const [first] = await waitUntil(async () => { const found = await pendingPermissions(sessionID); return found.length ? found : undefined }, 30_000, "the permission prompt")
     const firstNap = await run.waitForNap(NAP_TIMEOUT_MS)
-    expect(firstNap.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + 5_000)
+    expect(firstNap.at - watchingAt, await run.context()).toBeLessThan(IDLE_MS + NAP_SLACK_MS)
     await visibleAfterWake(PERMISSION_DIALOG, "pending permission prompt")
     // The wake key was swallowed, so the prompt is still waiting for an answer.
     expect((await pendingPermissions(sessionID)).map(request => request.id)).toEqual([first.id])
