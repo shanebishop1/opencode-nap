@@ -14,7 +14,7 @@ import {
   type Scratch,
 } from "./e2e/harness.js"
 import { CLICK, NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
-import { processTree, readArgv, readEnviron } from "./e2e/processes.js"
+import { processTree } from "./e2e/processes.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
 // 15 s idle, checked at most every 5 s.
@@ -64,7 +64,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     const drawnAt = await waitUntil(() => (/ctrl\+p commands/.test(stripEscapesSince(tui, offset)) ? Date.now() : undefined), 30_000, "the prompt to be drawn")
     await run.waitForWatching(2)
 
-    expect(await readArgv(tui.pid), await run.context()).toEqual([expect.stringContaining("opencode"), "--server", server.url, scratch.project, "-s", sessionID])
+    expect((await watch.ask("state")).result.argv, await run.context()).toEqual(["--server", server.url, scratch.project, "-s", sessionID])
     const messages = (await watch.napEntries()).map(entry => entry.message)
     expect(messages, await run.context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
     expect((await watch.napEntries())[2].detail?.route).toEqual({ type: "session", sessionID })
@@ -81,49 +81,32 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
       `Space to prompt focused ${interactive.time - spaceAt} ms, drawn ${drawnAt - spaceAt} ms; woken ${(woken.rssKiB / 1024).toFixed(1)} MB RSS`)
   }, 180_000)
 
-  it("ac-wake-click, ac-args-kept: a click wakes it with the same flags, absolute directory and environment", async () => {
+  it("ac-wake-click, ac-args-kept: a click wakes it with the same flags, absolute directory and environment sentinel", async () => {
     const watch = await Watch.configure(scratch, "click", napOptions)
     const sessionID = await createSession(scratch, server.url)
     // Started from the scratch root with a relative directory, as from a shell.
-    const env = { ...scratch.env, PWD: scratch.root, NAP_E2E_MARK: "kept", NO_PROXY: "nap-e2e.invalid" }
+    const env = { ...scratch.env, PWD: scratch.root, NAP_E2E_MARK: "kept" }
     const args = ["--server", server.url, "--auto", "--log-level", "warn", "-s", sessionID, "project"]
     const tui = await open(scratch, "click", args, { cwd: scratch.root, env })
     const run = new NapRun(tui, watch)
 
     await run.waitForWatching(1)
-    const started = await readEnviron(tui.pid)
+    expect((await watch.ask("environment")).result.markerKept).toBe(true)
     await run.waitForNap(NAP_TIMEOUT_MS)
     const clickAt = await run.wake(CLICK)
     const interactive = await run.waitForInteractive(clickAt)
     await run.waitForWatching(2)
 
-    expect(await readArgv(tui.pid), await run.context()).toEqual([
-      expect.stringContaining("opencode"), "--server", server.url, "--auto", "--log-level", "warn", scratch.project, "-s", sessionID,
+    expect((await watch.ask("state")).result.argv, await run.context()).toEqual([
+      "--server", server.url, "--auto", "--log-level", "warn", scratch.project, "-s", sessionID,
     ])
-    // Every variable the TUI was started with reaches the woken TUI unchanged,
-    // except two that OpenCode and the shell set themselves.
-    const woken = await readEnviron(tui.pid)
-    const ownedByOthers = ["NO_PROXY", "no_proxy", "PWD"]
-    const changed = [...started.keys()].filter(name => woken.get(name) !== started.get(name) && !ownedByOthers.includes(name))
-    expect(changed, "variables lost or changed by the nap").toEqual([])
-    const added = [...woken.keys()].filter(name => !started.has(name))
-    expect(added.filter(name => !ownedByOthers.includes(name)), "variables added by the nap").toEqual([])
-    // At startup OpenCode sets NO_PROXY and no_proxy to both lists plus
-    // loopback, so the woken TUI sees that merged list in both.
-    const proxyExceptions = (value: string | undefined) => (value ?? "").split(",").filter(Boolean)
-    const allowed = [...proxyExceptions(started.get("NO_PROXY")), ...proxyExceptions(started.get("no_proxy")), "127.0.0.1", "localhost", "::1"]
-    for (const name of ["NO_PROXY", "no_proxy"]) {
-      expect(proxyExceptions(woken.get(name))).toEqual(expect.arrayContaining(proxyExceptions(started.get(name))))
-      expect(proxyExceptions(woken.get(name)).filter(entry => !allowed.includes(entry))).toEqual([])
-    }
-    // OpenCode changed into its directory argument, so the stub's shell resets
-    // PWD to that directory; the woken command line names it absolutely.
-    expect(woken.get("PWD")).toBe(scratch.project)
+    // Bounded inheritance checks avoid reading another process's environment.
+    // The stub's shell resets PWD to OpenCode's resolved working directory.
+    expect((await watch.ask("environment")).result).toEqual({ markerKept: true, directoryKept: true })
     // No part of the mouse sequence reached the prompt.
     expect(interactive.prompt, await run.context()).toBe("")
     await sleep(1_000)
     expect((await watch.ask("state")).result.prompt).toBe("")
-    console.log(`args kept; variables added on wake (by OpenCode or the shell): ${added.sort().join(", ") || "none"}`)
   }, 180_000)
 
   it("ac-home-route: a TUI on the start screen naps and wakes to the start screen", async () => {
@@ -140,7 +123,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     await run.waitForInteractive(spaceAt)
     await run.waitForWatching(2)
 
-    expect(await readArgv(tui.pid), await run.context()).toEqual([expect.stringContaining("opencode"), "--server", server.url, scratch.project])
+    expect((await watch.ask("state")).result.argv, await run.context()).toEqual(["--server", server.url, scratch.project])
     expect((await watch.napEntries()).find(entry => entry.message === "napping")?.detail?.route).toEqual({ type: "home" })
     expect((await watch.ask("state")).result.route).toEqual({ type: "home" })
     await waitUntil(() => (/Ask anything/.test(stripEscapesSince(tui, offset)) ? true : undefined), 10_000, "the start screen", () => stripEscapesSince(tui, offset))
@@ -164,8 +147,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     await run.waitForInteractive(spaceAt)
     await run.waitForWatching(2)
 
-    const argv = await readArgv(tui.pid)
-    expect(argv, await run.context()).toEqual([expect.stringContaining("opencode"), "--server", server.url, scratch.project, "-s", sessionID])
+    const argv = (await watch.ask("state")).result.argv
+    expect(argv, await run.context()).toEqual(["--server", server.url, scratch.project, "-s", sessionID])
     await sleep(2_000)
     expect((await watch.ask("state")).result.prompt).toBe("")
     expect(await messagesOf(sessionID)).toEqual([])

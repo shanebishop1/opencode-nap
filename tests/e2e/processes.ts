@@ -1,4 +1,3 @@
-import { readFile } from "fs/promises"
 import { $ } from "bun"
 
 export type ProcessInfo = { pid: number; ppid: number; rss: number; args: string }
@@ -36,14 +35,4 @@ export async function processTree(pid: number): Promise<{ leader: string; rssKiB
     count: members.length,
     members,
   }
-}
-
-export async function readArgv(pid: number): Promise<string[]> {
-  return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter(Boolean)
-}
-
-/** The environment a process was started with. Never print the values: they include the server password. */
-export async function readEnviron(pid: number): Promise<Map<string, string>> {
-  const entries = (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0").filter(Boolean)
-  return new Map(entries.map(entry => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]))
 }

@@ -115,10 +115,10 @@ export class NapRun {
     return Date.now()
   }
 
-  /** Waits for the observer to report the prompt interactive after `since` and returns that time. */
+  /** Waits for an interactive prompt in the original TUI process after `since`. */
   async waitForInteractive(since: number, timeoutMs = 60_000): Promise<Entry> {
     return waitUntil(async () => (await this.watch.observerEntries())
-      .find(entry => entry.event === "interactive" && entry.time >= since), timeoutMs, "an interactive prompt")
+      .find(entry => entry.event === "interactive" && entry.pid === this.pid && entry.time >= since), timeoutMs, "an interactive prompt in the original TUI process")
   }
 
   /** Waits for the next nap card and for the process to have become the stub. */
