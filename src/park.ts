@@ -1,5 +1,4 @@
 import { buildWakeArgs, type Route } from "./argv.js"
-import type { PendingWrites } from "./pending.js"
 import { buildStubExec } from "./stub.js"
 
 export type Execve = (file: string, argv: string[], env: NodeJS.ProcessEnv) => void
@@ -28,10 +27,9 @@ export interface ParkInput {
   env: NodeJS.ProcessEnv
   /** The session's title for the nap card. */
   title: (sessionID: string) => unknown
-  pending: PendingWrites
-  /** Runs once the storage writes have landed; returns extra environment for the woken TUI, or a deferral. */
+  /** Synchronously saves the draft; returns extra environment for the woken TUI, or a deferral. */
   beforeNap?: () => Record<string, string> | NapDeferral | undefined
-  /** Checked after every wait; false when input arrived or the nap was deferred meanwhile. */
+  /** Checked after draft capture, in case input arrived since the nap was decided. */
   stillDue: () => boolean
   /** Called just before the exec. */
   onExec?: (route: Route) => void
@@ -43,16 +41,15 @@ export type ParkResult =
   | { status: "exec-failed"; error: unknown }
 
 /** Replaces the process with the nap stub. Returns only when it did not. */
-export async function park(input: ParkInput): Promise<ParkResult> {
+export function park(input: ParkInput): ParkResult {
   const route = toWakeRoute(input.route)
   const wake = buildWakeArgs(input.args, route, input.resolveDirectory)
   if (!wake.ok) return { status: "skipped", reason: `cannot build the wake command line: ${wake.reason}` }
 
   const title = route.type === "session" ? input.title(route.sessionID) : undefined
-  if (!(await input.pending.settled())) return { status: "skipped", reason: "the plugin's storage writes took too long" }
   const extraEnv = input.beforeNap?.()
   if (extraEnv instanceof NapDeferral) return { status: "skipped", reason: extraEnv.reason }
-  if (!input.stillDue()) return { status: "skipped", reason: "no longer due after waiting" }
+  if (!input.stillDue()) return { status: "skipped", reason: "no longer due before exec" }
 
   const stub = buildStubExec({
     cardTitle: typeof title === "string" ? title : undefined,

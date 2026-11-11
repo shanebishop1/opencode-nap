@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test"
 import { NapDeferral, park, toWakeRoute, type ParkInput } from "../src/park.js"
-import { createPendingWrites } from "../src/pending.js"
 import { buildStubExec } from "../src/stub.js"
 
 describe("toWakeRoute", () => {
@@ -28,7 +27,6 @@ describe("park", () => {
       opencodePath: "/bin/opencode",
       env: { PATH: "/usr/bin" },
       title: () => "Title",
-      pending: createPendingWrites(),
       stillDue: () => true,
       execve: (...args) => {
         calls.push(args)
@@ -38,44 +36,40 @@ describe("park", () => {
     }
   }
 
-  it("execs the stub with the card title, the wake command line and the environment", async () => {
+  it("execs the stub with the card title, the wake command line and the environment", () => {
     const parkInput = input()
-    expect(await park(parkInput)).toEqual({ status: "exec-failed", error: new Error("ENOENT") })
+    expect(park(parkInput)).toEqual({ status: "exec-failed", error: new Error("ENOENT") })
     const stub = buildStubExec({ cardTitle: "Title", opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
     expect(parkInput.calls).toEqual([[stub.file, stub.argv, { PATH: "/usr/bin" }]])
   })
 
-  it("leaves the title off when it is not a string", async () => {
+  it("leaves the title off when it is not a string", () => {
     const parkInput = input({ title: () => undefined })
-    await park(parkInput)
+    park(parkInput)
     expect((parkInput.calls[0][1] as string[])[4]).toBe("")
   })
 
-  it("skips when the wake command line cannot be built", async () => {
+  it("skips when the wake command line cannot be built", () => {
     const parkInput = input({ route: { type: "session", sessionID: "--x" } })
-    expect(await park(parkInput)).toEqual({ status: "skipped", reason: 'cannot build the wake command line: invalid session id "--x"' })
+    expect(park(parkInput)).toEqual({ status: "skipped", reason: 'cannot build the wake command line: invalid session id "--x"' })
     expect(parkInput.calls).toHaveLength(0)
   })
 
-  it("merges the environment from beforeNap", async () => {
+  it("merges the environment from beforeNap", () => {
     const parkInput = input({ beforeNap: () => ({ EXTRA: "yes" }) })
-    await park(parkInput)
+    park(parkInput)
     expect(parkInput.calls[0][2]).toEqual({ PATH: "/usr/bin", EXTRA: "yes" })
   })
 
-  it("skips with the reason a beforeNap deferral gives", async () => {
+  it("skips with the reason a beforeNap deferral gives", () => {
     const parkInput = input({ beforeNap: () => new NapDeferral("cannot read the draft") })
-    expect(await park(parkInput)).toEqual({ status: "skipped", reason: "cannot read the draft" })
+    expect(park(parkInput)).toEqual({ status: "skipped", reason: "cannot read the draft" })
     expect(parkInput.calls).toHaveLength(0)
   })
 
-  it("runs beforeNap after the pending writes and before the last due check", async () => {
+  it("saves the draft before the final due check and exec", () => {
     const order: string[] = []
     const parkInput = input({
-      pending: { track: write => write, settled: async () => {
-        order.push("settled")
-        return true
-      } },
       beforeNap: () => {
         order.push("beforeNap")
         return undefined
@@ -84,41 +78,19 @@ describe("park", () => {
         order.push("stillDue")
         return true
       },
+      execve: () => { order.push("execve") },
     })
-    await park(parkInput)
-    expect(order).toEqual(["settled", "beforeNap", "stillDue"])
+    park(parkInput)
+    expect(order).toEqual(["beforeNap", "stillDue", "execve"])
   })
 
-  it("waits for pending writes, then checks the nap is still due", async () => {
-    const pending = createPendingWrites()
-    let finish = () => {}
-    void pending.track(new Promise<void>(done => { finish = done }))
-    let due = true
-    const parkInput = input({ pending, stillDue: () => due })
-    const result = park(parkInput)
-    await new Promise(done => setTimeout(done, 0))
-    expect(parkInput.calls).toHaveLength(0)
-    due = false
-    finish()
-    expect(await result).toEqual({ status: "skipped", reason: "no longer due after waiting" })
+  it("does not exec if the nap is no longer due after capture", () => {
+    const parkInput = input({ stillDue: () => false })
+    expect(park(parkInput)).toEqual({ status: "skipped", reason: "no longer due before exec" })
     expect(parkInput.calls).toHaveLength(0)
   })
 
-  it("skips when the writes outlast their limit", async () => {
-    const parkInput = input({ pending: { track: write => write, settled: async () => false } })
-    expect(await park(parkInput)).toEqual({ status: "skipped", reason: "the plugin's storage writes took too long" })
-    expect(parkInput.calls).toHaveLength(0)
-  })
-
-  it("a failed write does not block the nap", async () => {
-    const pending = createPendingWrites()
-    void pending.track(Promise.reject(new Error("disk full"))).catch(() => {})
-    const parkInput = input({ pending })
-    await park(parkInput)
-    expect(parkInput.calls).toHaveLength(1)
-  })
-
-  it("reports an execve that returns as a failure", async () => {
-    expect(await park(input({ execve: () => {} }))).toEqual({ status: "exec-failed", error: new Error("execve returned") })
+  it("reports an execve that returns as a failure", () => {
+    expect(park(input({ execve: () => {} }))).toEqual({ status: "exec-failed", error: new Error("execve returned") })
   })
 })

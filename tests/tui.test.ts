@@ -1,8 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { GuardFacts } from "../src/guards.js"
-import { createPendingWrites } from "../src/pending.js"
 import { buildStubExec } from "../src/stub.js"
-import { startNap, type NapHooks } from "../src/tui.js"
+import { startNap } from "../src/tui.js"
 import { fakeContext, fakeLog, fakeProcess, settle, SERVER_URL, SESSION_ID } from "./fakes.js"
 
 const IDLE_MS = 60_000
@@ -13,7 +12,6 @@ type Setup = {
   facts?: Partial<GuardFacts>
   options?: unknown
   edit?: (context: ReturnType<typeof fakeContext>) => void
-  hooks?: NapHooks
 }
 
 async function start(setup: Setup = {}) {
@@ -21,21 +19,13 @@ async function start(setup: Setup = {}) {
   const context = fakeContext(fake.stdin)
   setup.edit?.(context)
   const log = fakeLog()
-  const cleanup = startNap(context, "options" in setup ? setup.options : options, log, fake.proc, setup.hooks)
+  const cleanup = startNap(context, "options" in setup ? setup.options : options, log, fake.proc)
   await settle()
   const listeners = () => context.renderer.count() + context.renderer.keyInput.count() + fake.stdin.count()
   return { fake, context, log, cleanup, listeners }
 }
 
 const messages = (log: ReturnType<typeof fakeLog>) => log.entries.map(entry => entry.message)
-
-/** Pending writes held until `finish` runs. */
-function heldWrite(limitMs?: number) {
-  const pending = createPendingWrites(limitMs)
-  let finish = () => {}
-  void pending.track(new Promise<void>(done => { finish = done }))
-  return { pending, finish }
-}
 
 describe("startNap", () => {
   it("ac-idle-nap: execs the stub with the wake command line and the TUI's environment once idle", async () => {
@@ -69,30 +59,6 @@ describe("startNap", () => {
     const { fake } = await start({ args: ["--server", SERVER_URL, "project"] })
     await fake.advance(IDLE_MS + 5_000)
     expect(fake.execs[0].argv.slice(6)).toEqual(["--server", SERVER_URL, "/work/project", "-s", SESSION_ID])
-  })
-
-  it("waits for the plugin's pending storage writes before the exec", async () => {
-    const { finish, pending } = heldWrite()
-    const { fake } = await start({ hooks: { pending } })
-    await fake.advance(IDLE_MS + 5_000)
-    expect(fake.execs).toHaveLength(0)
-    finish()
-    await fake.advance(0)
-    expect(fake.execs).toHaveLength(1)
-  })
-
-  it("skips a nap whose pending writes outlast their limit, logs once and tries again", async () => {
-    const { finish, pending } = heldWrite(10)
-    const { fake, log } = await start({ hooks: { pending } })
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await fake.advance(attempt === 0 ? IDLE_MS + 5_000 : 5_000)
-      await new Promise(done => setTimeout(done, 30))
-    }
-    expect(fake.execs).toHaveLength(0)
-    expect(messages(log)).toEqual(["watching", "nap skipped: the plugin's storage writes took too long"])
-    finish()
-    await fake.advance(5_000)
-    expect(fake.execs).toHaveLength(1)
   })
 
   it("ac-exec-fails: an execve that throws turns the plugin off without a retry", async () => {
@@ -155,19 +121,6 @@ describe("startNap", () => {
     expect(fake.execs).toHaveLength(1)
   })
 
-  it("checks again before the exec, so input during the wait for writes stops the nap", async () => {
-    const { finish, pending } = heldWrite()
-    const { fake, context, log } = await start({ hooks: { pending } })
-    await fake.advance(IDLE_MS + 5_000)
-    context.renderer.keyInput.emit("keypress", { name: "a" })
-    finish()
-    await fake.advance(0)
-    expect(fake.execs).toHaveLength(0)
-    expect(messages(log)).toEqual(["watching", "nap skipped: no longer due after waiting"])
-    await fake.advance(IDLE_MS + 5_000)
-    expect(fake.execs).toHaveLength(1)
-  })
-
   it("never naps while the renderer is suspended for an external editor, and naps once it resumes", async () => {
     const { fake, context, log } = await start()
     context.renderer.controlState = "explicit_suspended"
@@ -177,27 +130,6 @@ describe("startNap", () => {
     context.renderer.controlState = "auto_started"
     await fake.advance(5_000)
     expect(fake.execs).toHaveLength(1)
-  })
-
-  it("does not exec when the renderer is suspended during the wait for writes", async () => {
-    const { finish, pending } = heldWrite()
-    const { fake, context } = await start({ hooks: { pending } })
-    await fake.advance(IDLE_MS + 5_000)
-    context.renderer.controlState = "explicit_suspended"
-    finish()
-    await fake.advance(0)
-    expect(fake.execs).toHaveLength(0)
-  })
-
-  it("does not exec when cleanup runs during the wait for writes", async () => {
-    const { finish, pending } = heldWrite()
-    const { fake, cleanup } = await start({ hooks: { pending } })
-    await fake.advance(IDLE_MS + 5_000)
-    cleanup()
-    finish()
-    await fake.advance(10 * IDLE_MS)
-    expect(fake.execs).toHaveLength(0)
-    expect(fake.timers.size).toBe(0)
   })
 
   describe("focus rules", () => {
@@ -225,18 +157,6 @@ describe("startNap", () => {
       expect(fake.execs).toHaveLength(0)
       await fake.advance(5_000)
       expect(napRule(log)).toBe("idle")
-    })
-
-    it("ac-blur-debounce: regaining focus while waiting for writes stops the nap", async () => {
-      const { finish, pending } = heldWrite()
-      const { fake, context, log } = await start({ options: { ...options, napOnBlur: true }, hooks: { pending } })
-      context.renderer.emit("blur")
-      await fake.advance(2_000)
-      context.renderer.emit("focus")
-      finish()
-      await fake.advance(0)
-      expect(fake.execs).toHaveLength(0)
-      expect(messages(log)).toEqual(["watching", "nap skipped: no longer due after waiting"])
     })
 
     it("ac-blur-idle: naps an unfocused window after blurIdleMinutes, before idleMinutes", async () => {
