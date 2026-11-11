@@ -239,13 +239,16 @@ const plugin = {
   id: "opencode-nap",
   setup(context) {
     let rawOptions: unknown
+    let debugLogFile: unknown
     try {
       rawOptions = context.options
+      debugLogFile = isRecord(rawOptions) ? rawOptions.debugLogFile : undefined
     } catch {
-      rawOptions = undefined
+      // Unreadable options could hide enabled: false; never guess defaults.
+      return () => {}
     }
     // Read from the raw options so there is a log even when they are invalid.
-    const log = createLog(isRecord(rawOptions) ? rawOptions.debugLogFile : undefined)
+    const log = createLog(debugLogFile)
     log.write("loaded")
     try {
       return startNap(context, rawOptions, log, realProcess())

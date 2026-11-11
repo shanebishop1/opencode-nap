@@ -24,6 +24,26 @@ describe("tui plugin", () => {
     expect(typeof plugin.setup).toBe("function")
   })
 
+  for (const field of ["options", "debugLogFile"]) {
+    it(`ac-fail-safe: a throwing ${field} getter stops setup without using the host`, () => {
+      let hostReads = 0
+      const options = {
+        get debugLogFile(): undefined { throw new Error("unreadable log option") },
+      }
+      const context = {
+        get options() {
+          if (field === "options") throw new Error("unreadable options")
+          return options
+        },
+        get ui() { hostReads++; throw new Error("setup should have stopped") },
+      }
+      const cleanup = plugin.setup(context as unknown as Plugin.Context)
+      expect(typeof cleanup).toBe("function")
+      expect(hostReads).toBe(0)
+      expect(() => (cleanup as () => void)()).not.toThrow()
+    })
+  }
+
   it("logs that it loaded without dumping its options to the debug log file", async () => {
     const debugLogFile = join(directory, "nap.log")
     const cleanup = setup({ enabled: true, debugLogFile })
