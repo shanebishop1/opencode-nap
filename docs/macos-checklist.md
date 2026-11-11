@@ -4,47 +4,71 @@ Not run yet. Check Terminal.app and one other terminal (iTerm2 or Ghostty) on th
 
 Record macOS, OpenCode and terminal versions, results, timings and notes.
 
-Restart the TUI after each plugin option change.
+Edit only the scratch `cli.json`; restart the TUI after each plugin option change.
 
 ## Setup
 
-1. Build and pack from the repository:
+1. From the repository, build and pack into a new scratch directory:
 
    ```sh
    bun install --frozen-lockfile
    npm run build
-   npm pack   # writes opencode-nap-<version>.tgz
+   repo=$PWD
+   scratch=$(mktemp -d "${TMPDIR:-/tmp}/nap-check.XXXXXX")
+   npm pack --pack-destination "$scratch"
    ```
 
-2. Install into a new scratch directory; do not reuse an existing `~/nap-check`:
+2. Enter a clean test shell. Never use the owner's config, credentials or service. Keep every launch below in this shell:
 
    ```sh
-   mkdir "$HOME/nap-check" && cd "$HOME/nap-check"
+   mkdir -p "$scratch/home" "$scratch/config/opencode" "$scratch/data" "$scratch/state" \
+     "$scratch/cache" "$scratch/run" "$scratch/tmp" "$scratch/project"
+   chmod 700 "$scratch/run"
+   password=$(openssl rand -hex 24)
+   env -i PATH="$PATH" TERM=xterm-256color HOME="$scratch/home" \
+     XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data" \
+     XDG_STATE_HOME="$scratch/state" XDG_CACHE_HOME="$scratch/cache" \
+     XDG_RUNTIME_DIR="$scratch/run" TMPDIR="$scratch/tmp" \
+     OPENCODE_CONFIG="$scratch/project/opencode.json" \
+     OPENCODE_PASSWORD="$password" OPENCODE_SERVER_PASSWORD="$password" \
+     OPENCODE_DISABLE_AUTOUPDATE=1 OPENCODE_DISABLE_MODELS_FETCH=1 \
+     OPENCODE_DISABLE_FREE_MODELS=1 NAP_CHECK_REPO="$repo" \
+     NAP_CHECK_ROOT="$scratch" /bin/sh
+   cd "$NAP_CHECK_ROOT/project"
    npm init -y >/dev/null
-   npm install /abs/path/to/opencode-nap-<version>.tgz
+   npm install "$NAP_CHECK_ROOT"/opencode-nap-*.tgz @opencode/cli@2.2.4
    ```
 
-3. Use a test OpenCode setup. Back up `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json` if set), without overwriting an existing backup. Note if it did not exist. Preserve other settings and add:
+3. Start the existing [local provider fixture](../tests/fixtures/local-openai-server.ts):
 
-   ```json
-   {
-     "plugins": [
-       {
-         "package": "/Users/<you>/nap-check/node_modules/opencode-nap",
-         "options": {
-           "idleMinutes": 0.25,
-           "debugLogFile": "/Users/<you>/nap-check/nap.log"
-         }
-       }
-     ]
-   }
+   ```sh
+   bun "$NAP_CHECK_REPO/tests/fixtures/local-openai-server.ts" \
+     "$NAP_CHECK_ROOT/provider.jsonl" 45 1000 >"$NAP_CHECK_ROOT/provider.out" 2>&1 &
+   provider_pid=$!
    ```
 
-   Substitute your absolute installed-directory path. The bare name works only after npm publication.
+   Wait for `READY http://127.0.0.1:…` in `provider.out`. Substitute that URL below. This reuses the [test configuration](../tests/e2e/fake-provider.ts), which denies every provider except the local fake and makes shell permissions ask:
+
+   ```sh
+   bun -e '
+     const root = process.env.NAP_CHECK_ROOT
+     const { fakeProviderConfig } = await import(process.env.NAP_CHECK_REPO + "/tests/e2e/fake-provider.ts")
+     await Bun.write(process.env.OPENCODE_CONFIG, JSON.stringify(fakeProviderConfig(Bun.argv.at(-1))))
+     await Bun.write(root + "/config/opencode/cli.json", JSON.stringify({ plugins: [{
+       package: root + "/project/node_modules/opencode-nap",
+       options: { idleMinutes: 0.25, debugLogFile: root + "/nap.log" }
+     }] }))
+   ' 'http://127.0.0.1:<provider-port>'
+   ./node_modules/.bin/opencode serve --hostname 127.0.0.1 --port 0 \
+     >"$NAP_CHECK_ROOT/server.out" 2>&1 &
+   server_pid=$!
+   ```
+
+   Wait for `server listening on http://…` in `server.out`. For every TUI start/restart below, use `./node_modules/.bin/opencode --server <that-url> .`, not bare `opencode`. Do not configure a hosted provider. These steps follow the isolation in [the test harness](../tests/e2e/harness.ts); only step 13 may use a default service.
 
 ## Steps
 
-4. **Load.** Start `opencode` and open a session.
+4. **Load.** Start the TUI against the private server and open a session.
    - Expect: the session appears and `nap.log` exists, with JSON lines containing `"message":"loaded"` and `"message":"watching"`.
    - [ ] Result:
 
@@ -78,28 +102,28 @@ Restart the TUI after each plugin option change.
     - Then set `"napOnBlur": false` and `"blurIdleMinutes": 0.25`; restart and leave unfocused. Expect a nap after about 15 idle seconds. Remove `blurIdleMinutes` afterward.
     - [ ] Result:
 
-11. **Mid-run nap.** This and the next step need a model provider. Set `"napOnBlur": false` and `"idleMinutes": 0.25`; restart. Ask for a long answer; leave it streaming.
+11. **Mid-run nap.** Set `"napOnBlur": false` and `"idleMinutes": 0.25`; restart. Send `NAP_SLOW` to the local fake provider; it streams for 45 seconds.
     - Expect: the window naps while the reply is still streaming.
-    - Wait a minute, then wake. Expect the reply to have continued without error. If it finished before nap, repeat with a longer run.
+    - Wait a minute, then wake. Expect the full reply through `NAP_SLOW_DONE`, without error.
     - [ ] Result:
 
-12. **Permission prompt after wake.** Back up the test server's config; add `{ "action": "shell", "resource": "*", "effect": "ask" }` to `agents.build.permissions`. Restart the test server and TUI. Request a harmless shell command; leave permission unanswered. Paste a draft before the dialog appears.
+12. **Permission prompt after wake.** Send `NAP_PERM` to the local fake provider. It requests a harmless write to `nap-e2e-permission.txt` in the scratch project. Leave permission unanswered.
     - Wait for the nap, then wake with a key.
     - Expect: the permission prompt returns, still unanswered by the wake key.
-    - Leave it open for at least 10 seconds, then answer. Expect the run to continue and the draft to return when the prompt box reappears.
+    - Leave it open for at least 10 seconds, then allow once. Expect `NAP_PERM_DONE`.
     - [ ] Result:
 
-13. **Background service.** Start `opencode` without `--server` in the test setup. Do not replace an unrelated service. Repeat steps 5 and 6.
+13. **Background service — isolated account/VM only.** This requires an owner-provided disposable macOS account or VM with no unrelated service. Repeat the scratch setup there. Immediately before starting the default service, prove ports 49374 and 49375 are idle: `lsof -nP -iTCP:49374 -iTCP:49375 -sTCP:LISTEN` must show no listeners, and `nc -vz <address> <port>` must report connection refused for both ports on both `127.0.0.1` and `::1`. Only then start `./node_modules/.bin/opencode .` without `--server`; repeat steps 5 and 6. If isolation or port checks are uncertain, mark **not run**. Never probe by starting a service on the owner's account.
     - [ ] Result:
 
-14. **Named server.** Run `opencode serve --hostname 127.0.0.1 --port 0`; note the URL in `server listening on http://…`. Start `opencode --server <url>`; repeat steps 5 and 6.
+14. **Named server.** Using the private server from setup, repeat steps 5 and 6. Confirm the server PID stays unchanged across nap and wake.
     - [ ] Result:
 
 15. **Log.** Open `nap.log` and search it for text you typed in step 8.
     - Expect: no line contains the draft text.
     - [ ] Result:
 
-16. **Clean up.** Stop test TUIs and servers. Restore configs; remove a config only if you created it. Remove this run's scratch install, log, tarball and `dist/`. Remove `node_modules/` only if created for this check. Keep unrelated work.
+16. **Clean up.** Quit test TUIs; stop only the fixture/server you started with `kill "$provider_pid" "$server_pid"`, then `wait "$provider_pid" "$server_pid"`. Stop any service created in the disposable account/VM. Exit the clean shell; from its parent, run `rm -rf -- "$scratch"` and `unset password`. Remove this run's repository `dist/`, and repository `node_modules/` only if created for this check. Never restore or edit owner configs: none were used.
     - [ ] Result:
 
 17. **Record the terminals.** Replace "none yet" in the README with actual terminal versions, results and focus limitations. Do not claim unrun checks passed.
