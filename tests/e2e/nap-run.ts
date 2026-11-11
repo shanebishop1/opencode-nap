@@ -20,8 +20,9 @@ export const sleep = (milliseconds: number) => new Promise(done => setTimeout(do
 
 export type Entry = Record<string, any>
 
-// A napping window's process is the stub, `sh -c <script> ...`.
-const isStub = (commandLine: string): boolean => /^sh -c /.test(commandLine)
+// A napping window's process is the stub, `sh -c <script> ...`, or the shell
+// it replaces itself with, `/bin/sh -c <script> ...`.
+const isStub = (commandLine: string): boolean => /^(\/bin\/)?sh -c /.test(commandLine)
 
 /** What the TUI drew after the given offset in its raw output, as plain text. */
 export const stripEscapesSince = (tui: PtyProcess, offset: number): string => stripEscapes(tui.output().slice(offset))

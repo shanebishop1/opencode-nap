@@ -10,33 +10,23 @@ export interface StubExec {
   argv: string[]
 }
 
-// POSIX sh, run as `sh -c STUB_SCRIPT sh <card> <opencode> <args...>`. Values
-// only ever arrive as positional parameters. In this template literal every
-// backslash is doubled and every `${` is escaped.
+// The stub is POSIX sh in two stages, run as
+// `sh -c STUB_SCRIPT sh <card> <opencode> <args...>`. Values only ever arrive
+// as positional parameters. In these template literals every backslash is
+// doubled and every `${` is escaped.
 //
-// The card stays in $1 until it is printed, so the shell never holds a copy of
-// it in a variable, and it does nothing else with it: a napping window must
-// not grow.
+// Stage one resets the terminal and prints the card, then replaces itself with
+// stage two, which waits for a key. Printing expands the card in the shell's
+// memory, and a shell that kept that copy would hold it for as long as the
+// window naps; a new process image holds nothing but its own arguments.
 //
 // The first byte is read by `dd`: dash has no single-byte `read`, and bash's
 // `read -n 1` switches the terminal back to signal mode, so Ctrl-C would kill
 // the stub instead of waking it. The rest of an escape or mouse sequence is
 // drained by the `read` builtin until 0.1 s passes with no input.
-export const STUB_SCRIPT = `
-opencode=$2
-stty sane 2>/dev/null
-# Synchronized output off first so the rest shows. Kitty keyboard stacks are
-# per screen: pop all on the alternate screen, leave it, pop all on the main one.
-printf '\\033[?2026l\\033[<99u\\033[?1049l\\033[<99u'
-printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1006l\\033[?1015l'
-printf '\\033[?1004l\\033[?2004l\\033[?2027l\\033[?2031l'
-printf '\\033[?25h\\033[0m\\033[2J\\033[H'
-# Discard input queued before those modes went off (a late focus or theme
-# report), so only input that comes after the card wakes the stub.
-stty raw -echo min 0 time 1 2>/dev/null
-while IFS= read -r drained; do :; done
-printf '%s' "$1"
-shift 2
+const WAIT_SCRIPT = `
+opencode=$1
+shift
 stty min 1 time 0 2>/dev/null
 printf '\\033[?1000h\\033[?1006h'
 dd bs=1 count=1 of=/dev/null 2>/dev/null
@@ -68,6 +58,26 @@ quote "$opencode"
 for arg in "$@"; do cmd="$cmd "; quote "$arg"; done
 printf 'Cannot wake: %s is not executable.\\nTo resume, run:\\n  %s\\n' "$opencode" "$cmd" >&2
 exit 1
+`
+
+const singleQuoted = (text: string): string => `'${text.replace(/'/g, "'\\''")}'`
+
+export const STUB_SCRIPT = `
+opencode=$2
+stty sane 2>/dev/null
+# Synchronized output off first so the rest shows. Kitty keyboard stacks are
+# per screen: pop all on the alternate screen, leave it, pop all on the main one.
+printf '\\033[?2026l\\033[<99u\\033[?1049l\\033[<99u'
+printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1006l\\033[?1015l'
+printf '\\033[?1004l\\033[?2004l\\033[?2027l\\033[?2031l'
+printf '\\033[?25h\\033[0m\\033[2J\\033[H'
+# Discard input queued before those modes went off (a late focus or theme
+# report), so only input that comes after the card wakes the stub.
+stty raw -echo min 0 time 1 2>/dev/null
+while IFS= read -r drained; do :; done
+printf '%s' "$1"
+shift 2
+exec /bin/sh -c ${singleQuoted(WAIT_SCRIPT)} sh "$opencode" "$@"
 `
 
 export function buildStubExec(input: StubInput): StubExec {

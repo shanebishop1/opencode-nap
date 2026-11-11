@@ -39,7 +39,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: opencode.json configuratio
       const sessionID = await createSession(scratch, server.url)
       const tui = await startTuiWith(scratch, source, ["--server", server.url, "-s", sessionID, scratch.project])
       await tui.waitFor(CARD, 45_000)
-      expect((await processTree(tui.pid)).leader).toStartWith("sh -c ")
+      expect((await processTree(tui.pid)).leader).toMatch(/^(\/bin\/)?sh -c /)
       expect((await readJsonLines(debugLogFile)).map(entry => entry.message)).toEqual(["loaded", "watching", "napping"])
       expect(tui.text()).not.toContain("Plugin failed")
     }, 120_000)

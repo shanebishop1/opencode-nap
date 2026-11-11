@@ -10,12 +10,9 @@ import { stripEscapes, type PtyProcess } from "./e2e/pty.js"
 
 const napOptions = { idleMinutes: 0.25 }
 const NAP_TIMEOUT_MS = 40_000
-// The card is a constant 2 to 3 KB of argument, whatever the terminal size, so
-// it costs the shell a few pages of memory. Resident memory counts whole
-// pages, 4 KiB on Linux (8 to 16 KiB measured) and 16 KiB on Apple silicon,
-// where bash 3.2 measured 5 pages (80 KiB). A loop, buffer or child process
-// would cost several times this, so it is far from hidden.
-const RSS_BUDGET_KIB = 128
+// A pair of stubs that differ only in their card must differ by about a page:
+// the shell that prints the card replaces itself before it waits for a key.
+const RSS_BUDGET_KIB = 64
 // What the window as a whole may hold while napping, as in the core test.
 const NAPPED_LEADER_KIB = 5 * 1024
 
@@ -59,8 +56,10 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
     expect(drawn).toContain("/project")
     expect(drawn).toContain("any key wake")
     expect(drawn).toContain("2.2.4")
-    // The stub prints once and waits: one shell and its reader, nothing else.
+    // The stub prints once and waits: one shell and its reader, nothing else,
+    // and the shell that waits no longer carries the card.
     expect(napped.count).toBe(2)
+    expect((await processTree(tui.pid)).leader).not.toContain("█")
 
     await Bun.sleep(1_000)
     expect((await processTree(tui.pid)).leaderRssKiB, await run.context()).toBeLessThan(NAPPED_LEADER_KIB)
