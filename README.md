@@ -1,96 +1,76 @@
 # opencode-nap
 
-An OpenCode 2 TUI plugin that naps idle windows to save memory, then wakes them into the same session on a key press or click.
+[![npm](https://img.shields.io/npm/v/opencode-nap?logo=npm&style=flat-square)](https://www.npmjs.com/package/opencode-nap)
+[![License](https://img.shields.io/npm/l/opencode-nap?style=flat-square)](./LICENSE)
 
-On Linux, measured window RSS drops from about 152 MB to about 4 MB, including child processes. Runs keep going in the OpenCode server while a window naps. Unsent prompt text comes back after wake.
+An OpenCode 2 plugin that puts idle terminal windows to sleep to free memory, and wakes them into the same session when you press a key or click.
+
+Each open OpenCode window holds around 150 MB, even when you are not using it. A napping window holds about 4 MB. Work keeps running while a window naps, because sessions live in the OpenCode server, not in the window.
+
+It works in any terminal, inside or outside tmux, with nothing else to install.
+
+**This plugin was not built by the OpenCode team and is not affiliated with them.**
 
 ## Install
 
-The plugin needs OpenCode 2.2.4 or later. It is not published to npm yet. Until it is, [build, pack and install it](docs/macos-checklist.md#setup), then use the absolute installed-directory path below.
-
-OpenCode 2 TUI plugins are listed in `cli.json`, not `opencode.json`. The file is `$XDG_CONFIG_HOME/opencode/cli.json`, usually `~/.config/opencode/cli.json`:
+Add it to `~/.config/opencode/cli.json`, where OpenCode 2 lists its terminal UI plugins:
 
 ```json
 {
-  "plugins": ["/absolute/path/to/node_modules/opencode-nap"]
+  "plugins": ["opencode-nap"]
 }
 ```
 
-To set options, use the object form:
+Restart your OpenCode windows. Each one naps after 15 minutes without input.
+
+## Options
+
+Use the object form to set options:
 
 ```json
 {
   "plugins": [
     {
-      "package": "/absolute/path/to/node_modules/opencode-nap",
+      "package": "opencode-nap",
       "options": { "idleMinutes": 10, "napOnBlur": true }
     }
   ]
 }
 ```
 
-A bare package name, such as `"opencode-nap"`, installs from npm and will work only once the package is published. Both forms above accept an absolute installed-directory path.
+| Option            | Default | Meaning                                                                          |
+| ----------------- | ------- | -------------------------------------------------------------------------------- |
+| `idleMinutes`     | `15`    | Minutes without input before a window naps. Fractions are allowed.               |
+| `napOnBlur`       | `false` | Nap a couple of seconds after the terminal loses focus.                          |
+| `blurIdleMinutes` | unset   | A shorter idle time that applies while the terminal is unfocused.                |
+| `carryDraft`      | `true`  | Bring back unsent prompt text after a nap.                                       |
+| `enabled`         | `true`  | Set to `false` to turn the plugin off without removing it.                       |
+| `debugLogFile`    | unset   | Absolute path of a diagnostic log. It never contains prompt text.                |
 
-## Options
+Input means a key press, a paste or mouse input. The focus options need a terminal that reports focus changes; without them, only `idleMinutes` applies. An unknown or invalid option turns the plugin off.
 
-| Option            | Default | Meaning                                                                                         |
-| ----------------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `enabled`         | `true`  | Set to `false` to turn the plugin off without uninstalling it.                                  |
-| `idleMinutes`     | `15`    | Minutes without input before a nap. Fractions are allowed, for example `0.25`.                  |
-| `napOnBlur`       | `false` | Nap about 2 seconds after the terminal loses focus.                                             |
-| `blurIdleMinutes` | unset   | Minutes without input before a nap while the terminal is unfocused. Set it below `idleMinutes`. |
-| `carryDraft`      | `true`  | Carry unsent prompt text across a nap.                                                          |
-| `debugLogFile`    | unset   | Absolute path of a diagnostic log file. The log never contains draft text.                      |
+## How it works
 
-Input is a key press, a paste or mouse input. Switching focus is not input, and it never wakes a napping window.
+When a window has been idle long enough, the OpenCode process replaces itself with a tiny shell script that shows the session title and waits. Press any key or click to wake it: OpenCode starts again in the same window and opens the same session. The key you pressed is not sent to OpenCode.
 
-An unknown or invalid option turns the plugin off. Diagnostics go only to a configured, writable `debugLogFile`; nothing is shown on screen.
+Waking takes a second or two. A running session carries on in the server the whole time, and a permission or question prompt that comes up while the window naps is waiting for you when it wakes.
 
-The focus options need a terminal that reports focus. OpenCode turns focus reporting on only when the terminal answers its focus-mode query. Without focus reports, only `idleMinutes` applies.
+After a wake you get the same session, prompt history, open tabs, selected model and any unsent prompt text. The view starts fresh, as it does after a normal restart: scroll position resets, and the agent and model variant go back to their defaults. Attachments and images in an unsent prompt are not kept.
 
-## How wake works
+## When it does not nap
 
-When a window reaches its idle time, the OpenCode TUI process replaces itself in place with a small shell script. The process keeps its process ID. The script clears the screen and shows the session title and `Napping to save memory. Press any key or click to wake.`
+The plugin turns itself off for a window when napping could lose work or is not possible:
 
-A key press or a click wakes the window. It returns to the same session, or to the start screen if there was no session. The key or click is not passed to OpenCode. On Linux, a wake takes about 1.5 seconds to reach an interactive prompt.
+- OpenCode runs with `--standalone`, so the session lives inside the window.
+- OpenCode was started with a subcommand or an option the plugin does not recognise.
+- The platform is not macOS or Linux, or the terminal is not a real terminal.
+- An OpenCode internal the plugin relies on has changed.
 
-A permission or question prompt does not stop a nap. Prompts that were pending at nap time, or that arrived while the window napped, are shown again after wake, and you can answer them.
-
-## What is kept and what resets
-
-Kept: the session, prompt history, open tabs, the selected model and plugin storage. Unsent prompt text is carried with the cursor at the end. If a permission or question prompt is on screen, the text comes back once the prompt box reappears, with no time limit.
-
-Reset: the view, such as scroll position. The selected agent and model variant go back to their defaults, as they do on a normal restart.
-
-Only plain text is carried. Attachments and images in the prompt are not. A `--prompt` or `--continue` you started with is not passed to the woken window.
-
-If the OpenCode binary is no longer executable when you wake the window, for example after an upgrade, the script prints `Cannot wake` and the command that resumes the session, then exits.
+It waits and tries again a few seconds later while an external editor has the terminal, or while unsent prompt text cannot be saved.
 
 ## Platforms
 
-- **Linux:** supported.
-- **macOS:** [automated checks passed at `8022138`](https://github.com/shanebishop1/opencode-nap/actions/runs/42986106849), before the last 0.1.0 changes. The default-service test was skipped because it needs Linux network namespaces. Terminals checked by hand: none yet. See [the macOS checklist](docs/macos-checklist.md).
-- **Windows:** not supported. The plugin does nothing there.
-
-The plugin works with the background service (the default) and with `--server <url>`.
-
-The plugin turns itself off for the life of the window when:
-
-- `enabled` is `false`, or an option is invalid.
-- The platform is not Linux or macOS, or `process.execve` is not available.
-- The code is not on the main thread.
-- OpenCode runs with `--standalone`, its server runs inside the TUI process, or the server's process ID is unknown.
-- Standard input or output is not a terminal.
-- `/bin/sh` is not executable.
-- `opencode` was started with a subcommand or an argument the plugin does not know. It knows `--server`, `--auto`, `--log-level`, `--print-logs`, `-s`/`--session`, `-c`/`--continue`, `--prompt` and one directory.
-- An OpenCode internal the plugin relies on is missing. The plugin turns itself off rather than risk a broken nap.
-- A runtime error occurs or replacing the process fails.
-
-It skips a nap and tries again about 5 seconds later when:
-
-- OpenCode has handed the terminal to an external editor.
-- `carryDraft` is on and the draft cannot be read or saved.
-- The command that wakes the window cannot be built.
+macOS and Linux. On Windows the plugin does nothing.
 
 ## Development
 
@@ -98,10 +78,10 @@ It skips a nap and tries again about 5 seconds later when:
 bun install
 npm run ci:check   # lint, typecheck, unit tests
 npm run build
-npm run test:e2e   # packs the package, installs it into a scratch HOME, drives real TUIs under a pseudo-terminal
+npm run test:e2e   # drives real OpenCode windows against a local fake model
 ```
 
-The end-to-end suite uses a local fake model server. It calls no hosted models.
+The end-to-end tests never call a hosted model. [docs/macos-checklist.md](docs/macos-checklist.md) covers checking a real terminal by hand.
 
 ## License
 
