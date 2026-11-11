@@ -11,8 +11,20 @@ const stop = () => { for (const child of children) child.kill("SIGTERM") }
 const interrupt = () => { interrupted = true; stop() }
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.once(signal, interrupt)
 
-async function run(file: string): Promise<number> {
-  const child = Bun.spawn([process.execPath, "test", join(repository, "tests", file)], {
+type Job = { file: string; pattern?: string }
+
+// Split long files without a manifest that could omit new cases:
+// each selected group has an exhaustive complement in its own isolated process.
+const groups: Record<string, string> = {
+  "e2e.core.test.ts": "ac-idle-nap|ac-wake-click",
+  "e2e.draft.test.ts": "ac-draft-restored|ac-draft-empty",
+  "e2e.focus.test.ts": "ac-focus-events|ac-blur-debounce",
+}
+
+async function run({ file, pattern }: Job): Promise<number> {
+  const command = [process.execPath, "test", join(repository, "tests", file)]
+  if (pattern) command.push("--test-name-pattern", pattern)
+  const child = Bun.spawn(command, {
     cwd: repository,
     env: { ...process.env, NAP_E2E: "1", NAP_E2E_INSTALL: root },
     stdout: "pipe", stderr: "pipe",
@@ -22,19 +34,25 @@ async function run(file: string): Promise<number> {
     child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
   ])
   children.delete(child)
-  console.log(`\n=== ${file} ===\n${stdout}${stderr}`)
+  console.log(`\n=== ${file}${pattern ? ` (${pattern})` : ""} ===\n${stdout}${stderr}`)
   return code
 }
 
 try {
   await install(root)
   const files = (await readdir(join(repository, "tests"))).filter(file => /^e2e(?:\..+)?\.test\.ts$/.test(file)).sort()
+  // The streaming file is the longest unsplit job; do not leave it in the tail.
+  files.sort((a, b) => Number(b === "e2e.run.test.ts") - Number(a === "e2e.run.test.ts"))
+  const jobs: Job[] = files.flatMap(file => groups[file]
+    ? [{ file, pattern: groups[file] }, { file, pattern: `^(?!.*(?:${groups[file]})).*$` }]
+    : [{ file }])
   const results: number[] = []
-  await Promise.all(Array.from({ length: Math.min(8, files.length) }, async () => {
-    while (files.length && !interrupted) results.push(await run(files.shift()!))
+  await Promise.all(Array.from({ length: Math.min(8, jobs.length) }, async () => {
+    while (jobs.length && !interrupted) results.push(await run(jobs.shift()!))
   }))
   process.exitCode = interrupted ? 130 : results.some(code => code !== 0) ? 1 : 0
 } finally {
+  interrupted = true
   stop()
   await Promise.all([...children].map(child => child.exited))
   await rm(root, { recursive: true, force: true })
