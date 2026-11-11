@@ -69,8 +69,10 @@ If the OpenCode binary is no longer executable when you wake the window, for exa
 ## Platforms
 
 - **Linux:** supported.
-- **macOS:** automated validation is in progress. Terminals checked by hand: none yet. See [the macOS checklist](docs/macos-checklist.md).
+- **macOS:** [automated checks passed at `8022138`](https://github.com/shanebishop1/opencode-nap/actions/runs/42986106849), before the final 0.1.0 candidate changes. The default-service test was skipped because it needs Linux network namespaces. Terminals checked by hand: none yet. See [the macOS checklist](docs/macos-checklist.md).
 - **Windows:** not supported. The plugin does nothing there.
+
+This local 0.1.0 candidate has not passed hosted CI: current runs are blocked by GitHub Actions billing limits.
 
 The plugin works with the background service (the default) and with `--server <url>`.
 
@@ -90,7 +92,6 @@ It skips a nap and tries again about 5 seconds later when:
 
 - OpenCode has handed the terminal to an external editor.
 - `carryDraft` is on and the draft cannot be read or saved.
-- The plugin's pending storage writes take longer than 2 seconds.
 - The command that wakes the window cannot be built.
 
 ## Development
