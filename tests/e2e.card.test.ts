@@ -7,9 +7,8 @@ import {
 import { NapRun, SPACE, stripEscapesSince, waitUntil, Watch } from "./e2e/nap-run.js"
 import { processTree } from "./e2e/processes.js"
 import { stripEscapes, type PtyProcess } from "./e2e/pty.js"
+import { napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
-const napOptions = { idleMinutes: 0.25 }
-const NAP_TIMEOUT_MS = 40_000
 // A pair of stubs that differ only in their card must differ by about a page:
 // the shell that prints the card replaces itself before it waits for a key.
 const RSS_BUDGET_KIB = 64

@@ -17,11 +17,10 @@ import {
   type Scratch,
 } from "./e2e/harness.js"
 import { fakeProviderConfig, PERMISSION_DIALOG } from "./e2e/fake-provider.js"
-import { NapRun, sleep, SPACE, stripEscapesSince, waitUntil, Watch, type Entry } from "./e2e/nap-run.js"
+import { NapRun, SPACE, stripEscapesSince, waitUntil, Watch, type Entry } from "./e2e/nap-run.js"
 import type { PtyProcess } from "./e2e/pty.js"
 
-const napOptions = { idleMinutes: 0.25 }
-const NAP_TIMEOUT_MS = 40_000
+import { IDLE_MS, napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
@@ -59,7 +58,7 @@ const promptWhere = (watch: Watch, check: (prompt: Entry) => boolean, timeoutMs:
 
 /** Waits for the nap, notes the draft files while napped, and wakes with Space. */
 async function napAndWake(run: NapRun) {
-  await run.waitForNap(NAP_TIMEOUT_MS).catch(async error => {
+  const napped = await run.waitForNap(NAP_TIMEOUT_MS).catch(async error => {
     throw new Error(`${error.message}\n${await run.context()}`)
   })
   const whileNapped = draftsOnDisk()
@@ -67,7 +66,7 @@ async function napAndWake(run: NapRun) {
   const offset = run.tui.output().length
   await run.wake(SPACE)
   await run.waitForWatching(watching + 1)
-  return { whileNapped, offset }
+  return { whileNapped, offset, nappedAt: napped.at }
 }
 
 describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives a nap`, () => {
@@ -88,15 +87,19 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     const pasted = "second line\nthird — “line” ✓"
     const draft = typed + pasted
     await run.typeDraft(typed)
+    const lastInputAt = Date.now()
     run.pasteDraft(pasted)
     const before = await promptWhere(watch, prompt => prompt.text === draft, 10_000)
 
-    const { whileNapped, offset } = await napAndWake(run)
+    const { whileNapped, offset, nappedAt } = await napAndWake(run)
+    expect(nappedAt - lastInputAt, await run.context()).toBeGreaterThanOrEqual(IDLE_MS - 100)
     expect(whileNapped, await run.context()).toEqual([{ mode: 0o600, sha256: sha256(draft) }])
 
     const after = await promptWhere(watch, prompt => prompt.text === draft, 30_000)
     expect(after.cursorOffset).toBe(before.cursorOffset)
     expect(after.logicalCursor).toEqual(before.logicalCursor)
+    await waitUntil(() => (stripEscapesSince(tui, offset).includes("third") ? true : undefined),
+      10_000, "the restored draft to be drawn")
     expect(stripEscapesSince(tui, offset)).toContain("third")
     expect(draftPaths()).toEqual([])
     expect((await watch.ask("state")).result.napEnv).toEqual([])
@@ -111,7 +114,6 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     const { whileNapped } = await napAndWake(run)
     expect(whileNapped, await run.context()).toEqual([])
     await promptWhere(watch, prompt => prompt.focused, 30_000)
-    await sleep(1_000)
     expect((await watch.ask("prompt")).result.text).toBe("")
     expect((await watch.napEntries()).map(entry => entry.message)).not.toContain("draft restored")
   }, 240_000)
@@ -123,7 +125,6 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the unsent draft survives 
     const { whileNapped } = await napAndWake(run)
     expect(whileNapped, await run.context()).toEqual([])
     await promptWhere(watch, prompt => prompt.focused, 30_000)
-    await sleep(1_000)
     expect((await watch.ask("prompt")).result.text).toBe("")
   }, 240_000)
 
