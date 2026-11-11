@@ -140,10 +140,21 @@ describe("createIdleSource", () => {
     expect(idle.lastInputAt()).toBe(now)
   })
 
-  it("tolerates an unreadable access time", () => {
-    const { idle, keyInput, tick, setAtime, startedAt } = setup()
+  it("ac-focus-not-input, ac-input-resets: handles a long raw stream without a readable access time", () => {
+    const { idle, keyInput, stdin, tick, setAtime, startedAt } = setup()
     setAtime(undefined)
+    for (let second = 0; second < 120; second++) {
+      tick(1_000)
+      stdin.emit("data", "\x1b[I")
+    }
     expect(idle.lastInputAt()).toBe(startedAt)
+    stdin.emit("data", "\x1b[<35;10;")
+    const moved = tick(1_000)
+    stdin.emit("data", "10M")
+    expect(idle.lastInputAt()).toBe(moved)
+    tick(1_000)
+    stdin.emit("data", "\x1b[O")
+    expect(idle.lastInputAt()).toBe(moved)
     const pressed = tick(1_000)
     keyInput.emit("keypress", { name: "a" })
     expect(idle.lastInputAt()).toBe(pressed)

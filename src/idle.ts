@@ -54,6 +54,8 @@ export function createIdleSource(input: IdleSourceInput): IdleSource {
   const onInput = () => mark(input.now())
   const onData = (chunk: unknown) => {
     const now = input.now()
+    // Atime may never advance; raw reads must still expire old observations.
+    seen = seen.filter(at => now - at <= SEEN_KEEP_MS)
     seen.push(now)
     const text = mouseTail + toText(chunk)
     if (MOUSE_REPORT.test(text)) mark(now)
