@@ -35,8 +35,8 @@ function restoreHandedOverDraft(context: unknown, proc: NapProcess, log: Log): D
   try {
     const text = proc.drafts.take()
     return text === undefined ? undefined : restoreDraft({ text, renderer: rendererOf(context), log })
-  } catch (error) {
-    log.once("draft not restored", { reason: describe(error) })
+  } catch {
+    log.once("draft not restored", { reason: "the handed-over draft could not be restored" })
     return undefined
   }
 }

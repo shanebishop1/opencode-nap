@@ -51,11 +51,11 @@ describe("createDraftCarry", () => {
     const r = renderer()
     const draft = carry(r)
     Object.defineProperty(r, "currentFocusedEditor", { get: () => { throw new Error("renderer gone") } })
-    expect(draft.capture()).toEqual(new NapDeferral("cannot read the draft: renderer gone"))
+    expect(draft.capture()).toEqual(new NapDeferral("cannot read the draft: the prompt editor threw"))
 
     const unknown = renderer()
     unknown.currentFocusedEditor = fakeEditor("typed", {})
-    expect(carry(unknown).capture()).toEqual(new NapDeferral("cannot read the draft: the focused editor is not OpenCode's prompt"))
+    expect(carry(unknown).capture()).toEqual(new NapDeferral("cannot read the draft: the prompt editor threw"))
   })
 
   it("defers when the draft cannot be stored", () => {
@@ -63,7 +63,7 @@ describe("createDraftCarry", () => {
     r.prompt.text = "secret words"
     const files = { ...draftFiles({}, tmp), save: () => { throw new Error("ENOSPC: no space left on device") } }
     const deferral = createDraftCarry({ renderer: r, files, unrestored: () => undefined }).capture()
-    expect(deferral).toEqual(new NapDeferral("cannot save the draft: ENOSPC: no space left on device"))
+    expect(deferral).toEqual(new NapDeferral("cannot save the draft: the draft file could not be written"))
   })
 
   it("replaces and discards drafts stored for naps that did not happen", () => {

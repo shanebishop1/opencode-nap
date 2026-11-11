@@ -194,7 +194,7 @@ describe("draft carry-over", () => {
     const woken = await start({ env: { [DRAFT_ENV]: join(dir, "missing") } })
     expect((woken.log as ReturnType<typeof fakeLog>).entries[0]).toEqual({
       message: "draft not restored",
-      detail: { reason: "the draft file could not be read" },
+      detail: { reason: "the handed-over draft could not be restored" },
     })
     expect(woken.env[DRAFT_ENV]).toBeUndefined()
   })
@@ -221,7 +221,7 @@ describe("draft carry-over", () => {
 
     const written = readFileSync(debugLogFile, "utf8")
     const lines = written.trim().split("\n").map(line => JSON.parse(line).message)
-    for (const message of ["napping", "draft restored", "draft not restored", "nap skipped: cannot read the draft: the prompt was destroyed before its text could be read"]) {
+    for (const message of ["napping", "draft restored", "draft not restored", "nap skipped: cannot read the draft: the prompt editor threw"]) {
       expect(lines).toContain(message)
     }
     for (const part of [DRAFT, ...DRAFT.split(/\s+/).filter(word => word.length > 3)]) {
@@ -249,6 +249,56 @@ describe("draft carry-over", () => {
       { rule: "idle", route: { type: "session", sessionID: "ses_abc" } },
       { rule: "idle", route: { type: "other" } },
       { rule: "idle", route: { type: "other" } },
+    ])
+  })
+
+  it("ac-draft-not-logged: read and save errors cannot quote the draft in the log", async () => {
+    const debugLogFile = join(tmp, "nap.log")
+    const text = "PRIVATE_DRAFT_ERROR_59ccad"
+    for (const failure of ["read", "save"]) {
+      const files = draftFiles({}, dir)
+      const failing = await start({
+        log: createLog(debugLogFile),
+        drafts: failure === "save" ? { ...files, save: text => { throw new Error(`could not save ${text}`) } } : files,
+        edit: context => { context.prompt.text = text },
+        after: context => {
+          if (failure === "read") Object.defineProperty(context.prompt, "plainText", { get: () => { throw new Error(`could not read ${text}`) } })
+        },
+      })
+      await failing.fake.advance(IDLE_MS + 10_000)
+      expect(failing.fake.execs).toHaveLength(0)
+      failing.cleanup()
+    }
+    const written = readFileSync(debugLogFile, "utf8")
+    expect(written).not.toContain(text)
+    const skipped = written.trim().split("\n").map(line => JSON.parse(line)).filter(line => line.message.startsWith("nap skipped:"))
+    expect(skipped.map(line => line.message)).toEqual([
+      "nap skipped: cannot read the draft: the prompt editor threw",
+      "nap skipped: cannot save the draft: the draft file could not be written",
+    ])
+  })
+
+  it("ac-draft-not-logged: hand-over and restore errors cannot quote the draft in the log", async () => {
+    const debugLogFile = join(tmp, "nap.log")
+    const text = "PRIVATE_RESTORE_ERROR_192c8e"
+    const files = draftFiles({}, dir)
+    for (const failure of ["take", "restore"]) {
+      const failing = await start({
+        log: createLog(debugLogFile),
+        drafts: { ...files, take: () => {
+          if (failure === "take") throw new Error(`could not take ${text}`)
+          return text
+        } },
+        edit: context => { context.prompt.setText = text => { throw new Error(`could not restore ${text}`) } },
+      })
+      failing.cleanup()
+    }
+    const written = readFileSync(debugLogFile, "utf8")
+    expect(written).not.toContain(text)
+    const entries = written.trim().split("\n").map(line => JSON.parse(line)).filter(line => line.message === "draft not restored")
+    expect(entries.map(line => line.detail)).toEqual([
+      { reason: "the handed-over draft could not be restored" },
+      { reason: "the prompt editor threw", error: "Error" },
     ])
   })
 })
