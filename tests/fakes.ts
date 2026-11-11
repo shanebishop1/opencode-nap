@@ -70,6 +70,22 @@ export function fakeEditor(text = "", traits: unknown = { owner: "opencode", rol
   return editor
 }
 
+const rgba = (r: number, g: number, b: number) => ({ r: r / 255, g: g / 255, b: b / 255, a: 1 })
+
+/**
+ * OpenCode's default dark theme, as far as the nap card reads it. Like
+ * OpenCode's, `decrease` knows a colour by its token object, not its value.
+ */
+export const fakeTheme = () => {
+  const raised = rgba(20, 20, 20)
+  return {
+    background: { base: rgba(10, 10, 10), raised: { base: raised } },
+    text: { base: rgba(238, 238, 238), muted: rgba(128, 128, 128) },
+    categorical: [{ 200: rgba(92, 156, 245) }],
+    decrease: (color: unknown) => (color === raised ? rgba(30, 30, 30) : color),
+  }
+}
+
 /** A TUI context with every internal the plugin uses; the empty prompt is focused. */
 export function fakeContext(stdin: FakeEmitter) {
   const prompt = fakeEditor()
@@ -86,7 +102,13 @@ export function fakeContext(stdin: FakeEmitter) {
     serverPid: 200 as unknown,
     ui: { router: { current: () => context.route } },
     client: { server: { info: async () => ({ pid: context.serverPid, version: "2.2.4" }) } },
-    data: { session: { get: (sessionID: string) => (sessionID === SESSION_ID ? { title: context.title } : undefined) } },
+    data: {
+      session: {
+        get: (sessionID: string) => (sessionID === SESSION_ID ? { title: context.title, location: { directory: "/work/project" } } : undefined),
+      },
+    },
+    theme: fakeTheme() as unknown,
+    app: { version: "2.2.4" } as unknown,
     renderer,
     prompt,
   }
@@ -128,7 +150,11 @@ export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardF
   const timers = new Map<number, { at: number; run: () => void }>()
   const execs: ExecCall[] = []
   const stdin = new FakeEmitter()
-  const state = { execveError: undefined as Error | undefined, atimeError: undefined as Error | undefined }
+  const state = {
+    execveError: undefined as Error | undefined,
+    atimeError: undefined as Error | undefined,
+    size: { width: 120, height: 36 } as { width: number; height: number } | undefined,
+  }
 
   const proc: NapProcess = {
     now: () => now,
@@ -142,6 +168,8 @@ export function fakeProcess(overrides: { args?: string[]; facts?: Partial<GuardF
     },
     args: overrides.args ?? ["--server", SERVER_URL, "-s", SESSION_ID],
     execPath: "/opt/opencode/bin/opencode",
+    home: "/home/shane",
+    terminalSize: () => state.size,
     env: () => ({ PATH: "/usr/bin", OPENCODE_PASSWORD: "secret" }),
     start: { cwd: "/work/project", pwd: "/work", sameDirectory: () => false },
     stdin,

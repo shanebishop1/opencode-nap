@@ -75,7 +75,8 @@ Edit only the scratch `cli.json`; restart the TUI after each plugin option chang
    - [ ] Result:
 
 5. **Nap and memory.** Use `ps -axo pid,ppid,rss,comm` to record the TUI's PID and RSS, including children but excluding the separate server. Leave it idle for about 30 seconds; measure again.
-   - Expect: the window clears and shows the session title and `Napping to save memory. Press any key or click to wake.`
+   - Expect: the window clears and shows a copy of the OpenCode home screen: the logo, a box reading `Napping… press any key or click to wake` with the session title, and the directory below it.
+   - Expect: the logo's colours and the background match the home screen the TUI shows before the nap; the cursor sits in the box.
    - Expect: the process ID is the same as before the nap.
     - Expect: much lower total RSS. Linux measured about 152 MB awake and 4 MB napped; record macOS values for this terminal. `ps` reports KiB.
    - Include the `dd` reader listed by `pgrep -P <pid>` in the total.

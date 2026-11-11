@@ -14,6 +14,12 @@ export function toWakeRoute(route: unknown): Route {
   return { type: "session", sessionID }
 }
 
+/** What the nap card shows of the session. */
+export interface SessionFacts {
+  title?: unknown
+  directory?: unknown
+}
+
 /** Returned by beforeNap to skip this nap; the plugin tries again later. */
 export class NapDeferral {
   constructor(readonly reason: string) {}
@@ -25,8 +31,9 @@ export interface ParkInput {
   resolveDirectory: (arg: string) => string
   opencodePath: string
   env: NodeJS.ProcessEnv
-  /** The session's title for the nap card. */
-  title: (sessionID: string) => unknown
+  session: (sessionID: string) => SessionFacts
+  /** Builds the nap screen the stub prints. */
+  card: (session: SessionFacts) => string
   /** Synchronously saves the draft; returns extra environment for the woken TUI, or a deferral. */
   beforeNap?: () => Record<string, string> | NapDeferral | undefined
   /** Checked after draft capture, in case input arrived since the nap was decided. */
@@ -46,13 +53,13 @@ export function park(input: ParkInput): ParkResult {
   const wake = buildWakeArgs(input.args, route, input.resolveDirectory)
   if (!wake.ok) return { status: "skipped", reason: `cannot build the wake command line: ${wake.reason}` }
 
-  const title = route.type === "session" ? input.title(route.sessionID) : undefined
+  const session = route.type === "session" ? input.session(route.sessionID) : {}
   const extraEnv = input.beforeNap?.()
   if (extraEnv instanceof NapDeferral) return { status: "skipped", reason: extraEnv.reason }
   if (!input.stillDue()) return { status: "skipped", reason: "no longer due before exec" }
 
   const stub = buildStubExec({
-    cardTitle: typeof title === "string" ? title : undefined,
+    card: input.card(session),
     opencodePath: input.opencodePath,
     args: wake.args,
   })

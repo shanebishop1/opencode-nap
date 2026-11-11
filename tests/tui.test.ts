@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import type { GuardFacts } from "../src/guards.js"
+import { napCard, plainCard } from "../src/card.js"
+import { readPalette } from "../src/palette.js"
 import { buildStubExec } from "../src/stub.js"
 import { startNap } from "../src/tui.js"
-import { fakeContext, fakeLog, fakeProcess, settle, SERVER_URL, SESSION_ID } from "./fakes.js"
+import { withoutSequences } from "./grid.js"
+import { fakeContext, fakeLog, fakeProcess, fakeTheme, settle, SERVER_URL, SESSION_ID } from "./fakes.js"
 
 const IDLE_MS = 60_000
 const options = { idleMinutes: IDLE_MS / 60_000 }
@@ -38,7 +41,14 @@ describe("startNap", () => {
 
     expect(fake.execs).toHaveLength(1)
     const expected = buildStubExec({
-      cardTitle: "Fix the flaky test",
+      card: napCard({
+        size: { width: 120, height: 36 },
+        palette: readPalette(fakeTheme()),
+        title: "Fix the flaky test",
+        directory: "/work/project",
+        home: "/home/shane",
+        version: "2.2.4",
+      }),
       opencodePath: "/opt/opencode/bin/opencode",
       args: ["--server", SERVER_URL, "-s", SESSION_ID],
     })
@@ -52,7 +62,36 @@ describe("startNap", () => {
   it("ac-home-route: naps on a non-session route without -s or a title", async () => {
     const { fake } = await start({ edit: context => { context.route = { type: "home" } } })
     await fake.advance(IDLE_MS + 5_000)
-    expect(fake.execs[0].argv.slice(4)).toEqual(["", "/opt/opencode/bin/opencode", "--server", SERVER_URL])
+    const [card, ...rest] = fake.execs[0].argv.slice(4)
+    expect(rest).toEqual(["/opt/opencode/bin/opencode", "--server", SERVER_URL])
+    expect(withoutSequences(card)).toContain("Napping · work keeps running")
+    expect(withoutSequences(card)).toContain("/work/project")
+  })
+
+  describe("the nap card falls back instead of stopping the nap", () => {
+    const cardOf = async (setup: Setup) => {
+      const { fake } = await start(setup)
+      await fake.advance(IDLE_MS + 5_000)
+      return fake.execs[0].argv[4]
+    }
+
+    it("uses OpenCode's default colours when the theme cannot be read", async () => {
+      const card = await cardOf({ edit: context => { context.theme = undefined } })
+      expect(card).toContain(";48;2;10;10;10m")
+      expect(withoutSequences(card)).toContain("Fix the flaky test")
+    })
+
+    it("uses the plain text when the terminal size is unknown", async () => {
+      const { fake } = await start()
+      fake.state.size = undefined
+      await fake.advance(IDLE_MS + 5_000)
+      expect(fake.execs[0].argv[4]).toBe(plainCard("Fix the flaky test"))
+    })
+
+    it("uses the plain text when reading the host throws", async () => {
+      const card = await cardOf({ edit: context => { Object.defineProperty(context, "app", { get: () => { throw new Error("gone") } }) } })
+      expect(card).toBe(plainCard("Fix the flaky test"))
+    })
   })
 
   it("makes a relative directory argument absolute", async () => {

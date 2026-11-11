@@ -26,7 +26,8 @@ describe("park", () => {
       resolveDirectory: arg => `/abs/${arg}`,
       opencodePath: "/bin/opencode",
       env: { PATH: "/usr/bin" },
-      title: () => "Title",
+      session: () => ({ title: "Title", directory: "/work/project" }),
+      card: session => `card for ${String(session.title)} in ${String(session.directory)}`,
       stillDue: () => true,
       execve: (...args) => {
         calls.push(args)
@@ -36,17 +37,17 @@ describe("park", () => {
     }
   }
 
-  it("execs the stub with the card title, the wake command line and the environment", () => {
+  it("execs the stub with the card, the wake command line and the environment", () => {
     const parkInput = input()
     expect(park(parkInput)).toEqual({ status: "exec-failed", error: new Error("ENOENT") })
-    const stub = buildStubExec({ cardTitle: "Title", opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
+    const stub = buildStubExec({ card: "card for Title in /work/project", opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
     expect(parkInput.calls).toEqual([[stub.file, stub.argv, { PATH: "/usr/bin" }]])
   })
 
-  it("leaves the title off when it is not a string", () => {
-    const parkInput = input({ title: () => undefined })
+  it("builds the card without session facts on a route that is not a session", () => {
+    const parkInput = input({ route: { type: "home" }, session: () => { throw new Error("unexpected lookup") } })
     park(parkInput)
-    expect((parkInput.calls[0][1] as string[])[4]).toBe("")
+    expect((parkInput.calls[0][1] as string[])[4]).toBe("card for undefined in undefined")
   })
 
   it("skips when the wake command line cannot be built", () => {
