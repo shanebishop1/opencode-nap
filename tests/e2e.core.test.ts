@@ -156,8 +156,12 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: core nap and wake in a rea
     const main = await createSession(scratch, server.url)
     const other = await createSession(scratch, server.url)
 
+    // Opening a tab reaches the tab list a moment later, so read the state once both are listed.
     const observe = async (run: NapRun) => {
-      const state = (await run.watch.ask("state")).result
+      const state = await waitUntil(async () => {
+        const result = (await run.watch.ask("state")).result
+        return [main, other].every(id => result.tabs.includes(id)) ? result : undefined
+      }, 5_000, "both sessions in the tab list")
       await run.watch.ask("history-back")
       const recalled = await waitUntil(async () => {
         const prompt = (await run.watch.ask("state")).result.prompt
