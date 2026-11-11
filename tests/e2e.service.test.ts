@@ -18,6 +18,12 @@ if interfaces != ["lo"]:
     raise SystemExit("unexpected interfaces: %r" % interfaces)
 for port in (49374, 49375):
     probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    # Linux can connect a TCP socket to itself without any listening server.
+    while probe.getsockname()[1] == port:
+        probe.close()
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
     probe.settimeout(2)
     try:
         probe.connect(("127.0.0.1", port))
