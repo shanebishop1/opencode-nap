@@ -13,7 +13,7 @@ It works in any terminal, inside or outside tmux, with nothing else to install.
 
 ## Install
 
-Add it to `~/.config/opencode/cli.json`, where OpenCode 2 lists its terminal UI plugins:
+Add it to your global `~/.config/opencode/opencode.json` or a project's `opencode.json`:
 
 ```json
 {
@@ -25,7 +25,7 @@ Restart your OpenCode windows. Each one naps after 15 minutes without input.
 
 ## Options
 
-Use the object form to set options:
+Use the object form in the same file to set options:
 
 ```json
 {

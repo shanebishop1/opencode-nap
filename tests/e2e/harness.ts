@@ -138,8 +138,8 @@ const run = async (scratch: Scratch, name: string, command: string[], options: R
 }
 
 /** Starts a private `opencode serve` on loopback and returns its URL. */
-export async function startServer(scratch: Scratch): Promise<{ process: PtyProcess; url: string }> {
-  const server = await run(scratch, "server", [scratch.binary, "serve", "--hostname", "127.0.0.1", "--port", "0"])
+export async function startServer(scratch: Scratch, name = "server"): Promise<{ process: PtyProcess; url: string }> {
+  const server = await run(scratch, name, [scratch.binary, "serve", "--hostname", "127.0.0.1", "--port", "0"])
   const [, url] = await server.waitFor(/server listening on (http:\/\/127\.0\.0\.1:\d+)/, 30_000)
   return { process: server, url }
 }

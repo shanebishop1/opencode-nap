@@ -8,6 +8,7 @@ import { checkGuards } from "./guards.js"
 import { createIdleSource, type IdleSource } from "./idle.js"
 import { createLog, type Log } from "./log.js"
 import { park } from "./park.js"
+import { pluginOptions } from "./plugin-options.js"
 import { decide } from "./policy.js"
 import { probe } from "./probe.js"
 import { probePrompt } from "./prompt.js"
@@ -237,11 +238,11 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
 // packed plugin has no runtime dependency on @opencode/plugin.
 const plugin = {
   id: "opencode-nap",
-  setup(context) {
+  async setup(context) {
     let rawOptions: unknown
     let debugLogFile: unknown
     try {
-      rawOptions = context.options
+      rawOptions = await pluginOptions(context)
       debugLogFile = isRecord(rawOptions) ? rawOptions.debugLogFile : undefined
     } catch {
       // Unreadable options could hide enabled: false; never guess defaults.

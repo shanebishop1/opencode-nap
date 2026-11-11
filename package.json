@@ -1,9 +1,13 @@
 {
   "name": "opencode-nap",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode TUI plugin that naps idle windows to free memory and wakes them into the same session",
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
     "./tui": {
       "types": "./dist/tui.d.ts",
       "import": "./dist/tui.js"
