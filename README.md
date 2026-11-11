@@ -89,7 +89,7 @@ The plugin turns itself off for the life of the window when:
 It skips a nap and tries again about 5 seconds later when:
 
 - OpenCode has handed the terminal to an external editor.
-- `carryDraft` is on and the draft cannot be read or saved. This happens when the focused editor is not OpenCode's prompt, or when OpenCode's internals have changed.
+- `carryDraft` is on and the draft cannot be read or saved.
 - The plugin's pending storage writes take longer than 2 seconds.
 - The command that wakes the window cannot be built.
 
