@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { plainCard } from "../src/card.js"
+import { napCard, plainCard } from "../src/card.js"
 import { buildStubExec } from "../src/stub.js"
 import {
   cleanup, cliVersion, createScratch, createSession, e2eEnabled, startCommand, startServer, startTuiWith, stopTuis, type Scratch,
@@ -10,24 +10,24 @@ import { stripEscapes, type PtyProcess } from "./e2e/pty.js"
 
 const napOptions = { idleMinutes: 0.25 }
 const NAP_TIMEOUT_MS = 40_000
-// The printed card is a few KB of argument that dash copies once to print.
-// Two plain stubs differ by far less than this, so a card that cost a loop,
-// buffer or child process would show.
+// The card is a few KB of argument that the shell copies once to print. Two
+// stubs that differ only in their card differ by far less than this, so a card
+// that cost a loop, buffer or child process would show.
 const RSS_BUDGET_KIB = 64
+// What the window as a whole may hold while napping, as in the core test.
+const NAPPED_LEADER_KIB = 5 * 1024
 
 let scratch: Scratch
 let server: { process: PtyProcess; url: string }
 
-/** A plain stub, as 0.1.1 ran, napping next to the TUI in the same environment. */
-async function plainStubRss(): Promise<number> {
-  const stub = buildStubExec({ card: plainCard(""), opencodePath: "/bin/true", args: [] })
-  const pty = await startCommand(scratch, "plain-stub", [stub.file, ...stub.argv.slice(1)])
-  await pty.waitFor(/Press any key or click to wake/, 10_000)
-  const tree = await waitUntil(async () => {
-    const found = await processTree(pty.pid)
-    return found.count >= 2 ? found : undefined
-  }, 5_000, "the plain stub and its reader")
-  return tree.leaderRssKiB
+/** The shell's resident memory once a stub with this card is napping, started like the others in this run. */
+async function stubRss(name: string, card: string): Promise<number> {
+  const stub = buildStubExec({ card, opencodePath: "/bin/true", args: [] })
+  const pty = await startCommand(scratch, name, [stub.file, ...stub.argv.slice(1)])
+  await waitUntil(() => (pty.output().includes("\x1b[?1000h") ? true : undefined), 10_000, `the ${name} stub to wait for a key`)
+  await waitUntil(async () => ((await processTree(pty.pid)).count >= 2 ? true : undefined), 5_000, `the ${name} stub's reader`)
+  await Bun.sleep(500)
+  return (await processTree(pty.pid)).leaderRssKiB
 }
 
 describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
@@ -61,10 +61,19 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
     expect(napped.count).toBe(2)
 
     await Bun.sleep(1_000)
-    const card = (await processTree(tui.pid)).leaderRssKiB
-    const plain = await plainStubRss()
-    console.log(`napped sh RSS: ${card} KiB with the card, ${plain} KiB for a plain stub (${card - plain} KiB more)`)
-    expect(card - plain, await run.context()).toBeLessThan(RSS_BUDGET_KIB)
+    expect((await processTree(tui.pid)).leaderRssKiB, await run.context()).toBeLessThan(NAPPED_LEADER_KIB)
+    // The window's own card, against the 0.1.1 plain text, in one environment.
+    const rich = napCard({
+      size: { width: 120, height: 40 },
+      palette: undefined,
+      title: "Fix the flaky test",
+      directory: scratch.project,
+      home: scratch.env.HOME,
+      version: "2.2.4",
+    })
+    const [withCard, plain] = [await stubRss("card-stub", rich), await stubRss("plain-stub", plainCard(""))]
+    console.log(`napped sh RSS: ${withCard} KiB with the card, ${plain} KiB with plain text (${withCard - plain} KiB more)`)
+    expect(withCard - plain).toBeLessThan(RSS_BUDGET_KIB)
 
     const offset = tui.output().length
     const spaceAt = await run.wake(SPACE)
