@@ -106,8 +106,9 @@ describe.skipIf(!runnable)(`OpenCode ${cliVersion}: the default service, in a pr
     let namespace: string | undefined
     try {
       const [, proved] = await wrapper.waitFor(/NAP_E2E_PRIVATE_NETWORK (net:\[\d+\])/, 30_000)
+      expect(proved).not.toBe(netns("self"))
+      // Only arm namespace cleanup after proving it cannot target the caller.
       namespace = proved
-      expect(namespace).not.toBe(netns("self"))
 
       // bwrap stays as the parent; unshare execs in place.
       const tuiPid = await waitUntil(async () => (await processTree(wrapper.pid)).members
