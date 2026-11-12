@@ -95,6 +95,18 @@ describe("startNap", () => {
     })
   })
 
+  it("ac-focus-wake: a nap taken while unfocused wakes on focus, whichever rule took it", async () => {
+    const away = await start()
+    away.context.renderer.emit("blur")
+    await away.fake.advance(IDLE_MS + 5_000)
+    expect(away.fake.execs[0].argv[5]).toBe("focus")
+
+    const here = await start()
+    here.context.renderer.emit("focus")
+    await here.fake.advance(IDLE_MS + 5_000)
+    expect(here.fake.execs[0].argv[5]).toBe("keys")
+  })
+
   it("makes a relative directory argument absolute", async () => {
     const { fake } = await start({ args: ["--server", SERVER_URL, "project"] })
     await fake.advance(IDLE_MS + 5_000)
