@@ -1,7 +1,7 @@
 export interface StubInput {
   /** The nap screen, printed verbatim; see card.ts. */
   card: string
-  /** Whether regaining focus wakes it, for a nap that losing focus started. */
+  /** Whether regaining focus wakes it, for a nap taken while unfocused. */
   wakeOnFocus: boolean
   opencodePath: string
   args: string[]

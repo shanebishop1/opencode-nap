@@ -141,9 +141,9 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
           return { title: session?.title, directory: session?.location?.directory }
         },
         card: session => hostCard(context, proc, session),
-        // Coming back wakes a window that napped because you left it; the
-        // idle timer's nap still waits for a key or click.
-        wakeOnFocus: rule !== "idle",
+        // Coming back wakes a window that napped while you were away from it;
+        // one that napped while focused waits for a key or click.
+        wakeOnFocus: focus?.state().focus === "unfocused",
         beforeNap: () => carry?.capture(),
         stillDue: () => state === "napping" && decideNow().action === "nap",
         onExec: route => log.write("napping", { rule, route }),

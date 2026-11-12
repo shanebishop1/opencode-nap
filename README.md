@@ -51,7 +51,7 @@ Use the object form in the same file to set options:
 | `enabled`         | `true`  | Set to `false` to turn the plugin off without removing it.                       |
 | `debugLogFile`    | unset   | Absolute path of a diagnostic log. It never contains prompt text.                |
 
-Input means a key press, a paste or mouse input. The focus options need a terminal that reports focus changes; without them, only `idleMinutes` applies. A window that napped because it lost focus also wakes when you switch back to it; one that napped on `idleMinutes` waits for a key or click. An unknown or invalid option turns the plugin off.
+Input means a key press, a paste or mouse input. The focus options need a terminal that reports focus changes; without them, only `idleMinutes` applies. A window that napped while unfocused also wakes when you switch back to it; one that napped while focused waits for a key or click. An unknown or invalid option turns the plugin off.
 
 ## How it works
 
