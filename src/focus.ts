@@ -1,5 +1,6 @@
 import type { Focus } from "./policy.js"
 import type { Emitter } from "./probe.js"
+import { read } from "./read.js"
 
 export interface FocusState {
   focus: Focus
@@ -11,12 +12,23 @@ export interface FocusSource {
   dispose(): void
 }
 
-/**
- * Terminal focus from the renderer's "focus" and "blur" events; unknown until
- * the first one. `onChange` runs after each change, not for a repeated event.
- */
+// The renderer may already have received focus before a plugin starts or
+// reloads. This private snapshot is optional: an older or changed renderer
+// still works from future events, without guessing that the window is away.
+function rendererFocus(renderer: Emitter): Focus {
+  try {
+    const focused = read(renderer, "_terminalFocusState")
+    return focused === true ? "focused" : focused === false ? "unfocused" : "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
+/** Terminal focus, including reports received before setup. `onChange` runs only after later changes. */
 export function createFocusSource(input: { renderer: Emitter; now: () => number; onChange?: () => void }): FocusSource {
-  let current: FocusState = { focus: "unknown", unfocusedSince: undefined }
+  const initial = rendererFocus(input.renderer)
+  // The earlier blur's time is not known; allow the full debounce from now.
+  let current: FocusState = { focus: initial, unfocusedSince: initial === "unfocused" ? input.now() : undefined }
 
   const onFocus = () => {
     if (current.focus === "focused") return
