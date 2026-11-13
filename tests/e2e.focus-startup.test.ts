@@ -6,7 +6,6 @@ import {
   installObserver, startServer, startTuiWith, stopTuis, writeCliConfig, type Scratch,
 } from "./e2e/harness.js"
 import { NapRun, SPACE, waitUntil, Watch } from "./e2e/nap-run.js"
-import { processTree } from "./e2e/processes.js"
 import { napOptions, NAP_TIMEOUT_MS } from "./e2e/timing.js"
 
 const FOCUS_IN = "\x1b[I"
@@ -74,9 +73,10 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus received before plug
     const { tui, run } = await openAfterFocus("early-blur", FOCUS_OUT)
     await run.waitForNap(NAP_TIMEOUT_MS)
     expect(focusReporting(tui.output()), await run.context()).toBe(true)
+    const focusAt = Date.now()
     tui.write(FOCUS_IN)
     await run.waitForWatching(2)
-    expect((await processTree(tui.pid)).leader).toContain("opencode")
+    await run.waitForInteractive(focusAt)
   }, 120_000)
 
   it("ac-focus-startup: an already-focused window still waits for a key or click", async () => {
@@ -85,8 +85,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus received before plug
     // A real terminal sends no focus reports while this mode is disabled.
     expect(focusReporting(tui.output()), await run.context()).toBe(false)
     await run.assertNapping()
-    await run.wake(SPACE)
+    const spaceAt = await run.wake(SPACE)
     await run.waitForWatching(2)
-    expect((await processTree(tui.pid)).leader).toContain("opencode")
+    await run.waitForInteractive(spaceAt)
   }, 120_000)
 })
