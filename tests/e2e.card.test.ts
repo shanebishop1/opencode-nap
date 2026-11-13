@@ -52,7 +52,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
     expect(drawn).toContain("Sessions keep running in the background.")
     // Long scratch paths are cut to their last segments, so only the end is certain.
     expect(drawn).toContain("/project")
-    expect(drawn).toContain("2.2.4")
+    expect(drawn).toContain(cliVersion)
     // The stub prints once and waits: one shell and its reader, nothing else,
     // and the shell that waits no longer carries the card.
     expect(napped.count).toBe(2)
@@ -67,7 +67,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
       title: "Fix the flaky test",
       directory: scratch.project,
       home: scratch.env.HOME,
-      version: "2.2.4",
+      version: cliVersion,
     })
     const [withCard, plain] = [await stubRss("card-stub", rich), await stubRss("plain-stub", plainCard(""))]
     console.log(`napped sh RSS: ${withCard} KiB with the card, ${plain} KiB with plain text (${withCard - plain} KiB more)`)

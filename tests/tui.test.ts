@@ -107,6 +107,46 @@ describe("startNap", () => {
     expect(here.fake.execs[0].argv[5]).toBe("keys")
   })
 
+  it("ac-focus-startup: a focus report received before setup still selects the correct wake mode", async () => {
+    for (const focused of [false, true]) {
+      const { fake, cleanup } = await start({ edit: context => { Object.assign(context.renderer, { _terminalFocusState: focused }) } })
+      await fake.advance(IDLE_MS + 5_000)
+      expect(fake.execs[0].argv[5]).toBe(focused ? "keys" : "focus")
+      cleanup()
+    }
+  })
+
+  it("ac-focus-reload: reloading while unfocused keeps focus-wake without another blur report", async () => {
+    const { fake, context, cleanup } = await start()
+    Object.assign(context.renderer, { _terminalFocusState: false })
+    context.renderer.emit("blur")
+    cleanup()
+    const stop = startNap(context, options, fakeLog(), fake.proc)
+    await fake.advance(IDLE_MS + 5_000)
+    expect(fake.execs[0].argv[5]).toBe("focus")
+    stop()
+    expect(context.renderer.count() + context.renderer.keyInput.count() + fake.stdin.count()).toBe(0)
+  })
+
+  it("ac-focus-startup: follows focus changes while the server info request is pending", async () => {
+    for (const refocus of [false, true]) {
+      const fake = fakeProcess()
+      const context = fakeContext(fake.stdin)
+      let answer!: (value: { pid: unknown; version: string }) => void
+      context.client.server.info = () => new Promise(resolve => { answer = resolve })
+      const cleanup = startNap(context, options, fakeLog(), fake.proc)
+      // No snapshot: even older renderers must not lose reports during setup.
+      context.renderer.emit("blur")
+      await fake.advance(5_000)
+      if (refocus) context.renderer.emit("focus")
+      expect(fake.execs).toHaveLength(0)
+      answer({ pid: 200, version: "2.2.4" })
+      await fake.advance(IDLE_MS + 5_000)
+      expect(fake.execs[0].argv[5]).toBe(refocus ? "keys" : "focus")
+      cleanup()
+    }
+  })
+
   it("makes a relative directory argument absolute", async () => {
     const { fake } = await start({ args: ["--server", SERVER_URL, "project"] })
     await fake.advance(IDLE_MS + 5_000)

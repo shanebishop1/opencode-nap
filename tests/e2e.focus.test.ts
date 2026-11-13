@@ -126,8 +126,10 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
     const focusAt = Date.now()
     expect(focus(FOCUS_IN), await run.context()).toBe(true)
     const wokeAt = await run.waitForWatching(2)
-    expect(await leader(tui.pid), await run.context()).toContain("opencode")
-    expect(await messages(), await run.context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
+    await run.waitForInteractive(focusAt)
+    // Under load the short test timer may legitimately expire again before
+    // assertions finish. Check the first wake, not the window's later state.
+    expect((await messages()).slice(0, 5), await run.context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
     console.log(`focus-wake: focus in to plugin running ${wokeAt - focusAt} ms`)
   }, 120_000)
 
@@ -146,8 +148,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: focus rules in a real TUI`
 
     const spaceAt = await run.wake(SPACE)
     const wokeAt = await run.waitForWatching(2)
-    expect(await leader(tui.pid), await run.context()).toContain("opencode")
-    expect(await messages(), await run.context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
+    await run.waitForInteractive(spaceAt)
+    expect((await messages()).slice(0, 5), await run.context()).toEqual(["loaded", "watching", "napping", "loaded", "watching"])
     console.log(`no-wake: Space to plugin running ${wokeAt - spaceAt} ms`)
   }, 120_000)
 

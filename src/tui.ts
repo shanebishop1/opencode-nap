@@ -194,6 +194,17 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     schedule(decision.checkAfterMs)
   }
 
+  // Subscribe before awaiting server info, so focus changes during startup
+  // are not lost even if the renderer has no readable focus snapshot.
+  try {
+    focus = createFocusSource({ renderer: host.renderer, now: proc.now, onChange: recheck })
+    const source = focus
+    disposers.push(() => source.dispose())
+  } catch (error) {
+    off("off: runtime error", { error: describe(error) })
+    return cleanup
+  }
+
   void (async () => {
     let serverPid: number | undefined
     try {
@@ -218,18 +229,14 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     }
 
     try {
-      const sources = {
-        idle: createIdleSource({
-          now: proc.now,
-          readAtime: proc.readAtime,
-          keyInput: host.renderer.keyInput,
-          stdin,
-        }),
-        focus: createFocusSource({ renderer: host.renderer, now: proc.now, onChange: recheck }),
-      }
-      idle = sources.idle
-      focus = sources.focus
-      disposers.push(() => sources.idle.dispose(), () => sources.focus.dispose())
+      const source = createIdleSource({
+        now: proc.now,
+        readAtime: proc.readAtime,
+        keyInput: host.renderer.keyInput,
+        stdin,
+      })
+      idle = source
+      disposers.push(() => source.dispose())
     } catch (error) {
       off("off: runtime error", { error: describe(error) })
       return
