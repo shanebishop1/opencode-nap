@@ -1,6 +1,7 @@
 import { buildWakeArgs, type Route } from "./argv.js"
 import { dropAddedServer, namesServer, serviceFile } from "./service.js"
 import { buildStubExec } from "./stub.js"
+import { fallbackTerminalTitle } from "./terminal-title.js"
 
 export type Execve = (file: string, argv: string[], env: NodeJS.ProcessEnv) => void
 
@@ -37,6 +38,8 @@ export interface ParkInput {
   /** The version of the server this window is attached to, when known. */
   serverVersion?: string
   session: (sessionID: string) => SessionFacts
+  /** The last live title, or an empty string when title updates are disabled. */
+  terminalTitle?: string
   /** Builds the nap screen the stub prints. */
   card: (session: SessionFacts) => string
   /** Whether regaining focus wakes the nap, as well as a key or click. */
@@ -70,6 +73,7 @@ export function park(input: ParkInput): ParkResult {
 
   const stub = buildStubExec({
     card: input.card(session),
+    terminalTitle: input.terminalTitle ?? fallbackTerminalTitle(input.route, session.title),
     wakeOnFocus: input.wakeOnFocus,
     opencodePath: input.opencodePath,
     service: !namesServer(wake.args) && input.serverVersion

@@ -43,14 +43,31 @@ describe("park", () => {
   it("execs the stub with the card, the wake command line and the environment", () => {
     const parkInput = input()
     expect(park(parkInput)).toEqual({ status: "exec-failed", error: new Error("ENOENT") })
-    const stub = buildStubExec({ card: "card for Title in /work/project", wakeOnFocus: false, opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
+    const stub = buildStubExec({ card: "card for Title in /work/project", terminalTitle: "OC | Title", wakeOnFocus: false, opencodePath: "/bin/opencode", args: ["--server", "http://127.0.0.1:1", "/abs/project", "-s", "ses_a"] })
     expect(parkInput.calls).toEqual([[stub.file, stub.argv, { PATH: "/usr/bin" }]])
   })
 
   it("builds the card without session facts on a route that is not a session", () => {
     const parkInput = input({ route: { type: "home" }, session: () => { throw new Error("unexpected lookup") } })
     park(parkInput)
-    expect((parkInput.calls[0][1] as string[])[4]).toBe("card for undefined in undefined")
+    expect((parkInput.calls[0][1] as string[])[4]).toBe("\x1b]0;OpenCode\x07card for undefined in undefined")
+  })
+
+  it("uses OpenCode's route title when no live title was captured", () => {
+    for (const [title, expected] of [
+      [undefined, "OpenCode"],
+      ["New session - 2026-11-27T10:00:00.000Z", "OpenCode"],
+      ["Child session - 2026-11-27T10:00:00.000Z", "OpenCode"],
+      ["a".repeat(40), `OC | ${"a".repeat(40)}`],
+      ["a".repeat(41), `OC | ${"a".repeat(37)}…`],
+    ]) {
+      const parkInput = input({ session: () => ({ title }) })
+      park(parkInput)
+      expect((parkInput.calls[0][1] as string[])[4]).toStartWith(`\x1b]0;${expected}\x07`)
+    }
+    const plugin = input({ route: { type: "plugin", id: "x", name: "Review" } })
+    park(plugin)
+    expect((plugin.calls[0][1] as string[])[4]).toStartWith("\x1b]0;OC | Review\x07")
   })
 
   it("skips when the wake command line cannot be built", () => {

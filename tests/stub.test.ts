@@ -74,6 +74,7 @@ const sleep = (ms: number) => new Promise(done => setTimeout(done, ms))
 async function runStub(
   input: {
     card?: string
+    terminalTitle?: string
     wakeOnFocus?: boolean
     opencodePath?: string
     service?: { file: string; version: string }
@@ -85,6 +86,7 @@ async function runStub(
 ): Promise<Run> {
   const exec = buildStubExec({
     card: input.card ?? CARD,
+    terminalTitle: input.terminalTitle,
     wakeOnFocus: input.wakeOnFocus ?? false,
     opencodePath: input.opencodePath ?? opencode,
     service: input.service,
@@ -188,6 +190,13 @@ describe("stub under a terminal", () => {
     const card = `${ESC}[1m100%s \\n \\033 $HOME $(x) \`y\`${ESC}[0m`
     const run = await runStub({ card }, wakeSteps([{ send: SPACE }]))
     expect(napOutput(run)).toContain(`${ESC}[H${card}${ESC}[?1000h`)
+  })
+
+  it("replays the title as text after the screen reset and before the card", async () => {
+    const terminalTitle = "  100% café $HOME\x00\x07\x1b\\\x9c\x7f\n"
+    const run = await runStub({ terminalTitle }, wakeSteps([{ send: SPACE }]))
+    expect(run.timedOut).toBe(false)
+    expect(napOutput(run)).toContain(`${ESC}[H${ESC}]0;  100% café $HOME   \\   \x07${CARD}${ARMED}`)
   })
 
   it("ac-terminal-clean: clears the card's colours and screen before OpenCode starts", async () => {

@@ -14,6 +14,7 @@ import { decide } from "./policy.js"
 import { probe } from "./probe.js"
 import { probePrompt } from "./prompt.js"
 import { realProcess, type NapProcess } from "./process.js"
+import { terminalTitleDisabled, watchTerminalTitle } from "./terminal-title.js"
 
 // How soon to try again after a nap was skipped at nap time.
 const SKIP_RETRY_MS = 5_000
@@ -100,6 +101,9 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
     return cleanup
   }
   const { host, stdin } = probed
+  let liveTitle: string | undefined
+  const unwatchTitle = watchTerminalTitle(host.renderer, title => { liveTitle = title })
+  if (unwatchTitle) disposers.push(unwatchTitle)
 
   const carry = options.carryDraft ? createDraftCarry({ renderer: host.renderer, files: proc.drafts, unrestored: () => restore?.unrestored() }) : undefined
   if (carry) {
@@ -141,6 +145,7 @@ export function startNap(context: unknown, rawOptions: unknown, log: Log, proc: 
         env: proc.env(),
         home: proc.home,
         serverVersion,
+        terminalTitle: liveTitle ?? (terminalTitleDisabled(context) ? "" : undefined),
         session: sessionID => {
           const session = host.data.session.get(sessionID)
           return { title: session?.title, directory: session?.location?.directory }

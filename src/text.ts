@@ -2,11 +2,13 @@ function isControl(code: number): boolean {
   return code < 0x20 || (code >= 0x7f && code <= 0x9f)
 }
 
-// Turns C0, DEL and C1 characters (including ESC) into spaces, then collapses
-// runs of spaces, so text can never send a terminal sequence.
+/** Turns C0, DEL and C1 characters (including ESC) into spaces. */
+export function replaceControls(text: string): string {
+  return Array.from(text, char => isControl(char.codePointAt(0) ?? 0) ? " " : char).join("")
+}
+
 export function sanitizeText(text: string | undefined): string {
-  return Array.from(text ?? "", char => isControl(char.codePointAt(0) ?? 0) ? " " : char)
-    .join("")
+  return replaceControls(text ?? "")
     .replace(/ {2,}/g, " ")
     .trim()
 }

@@ -49,6 +49,7 @@ describe("startNap", () => {
         home: "/home/shane",
         version: "2.2.4",
       }),
+      terminalTitle: "OC | Fix the flaky test",
       wakeOnFocus: false,
       opencodePath: "/opt/opencode/bin/opencode",
       args: ["--server", SERVER_URL, "-s", SESSION_ID],
@@ -60,11 +61,12 @@ describe("startNap", () => {
     })
   })
 
-  it("ac-home-route: naps on a non-session route without -s or a title", async () => {
+  it("ac-home-route: naps on a non-session route without -s and uses the OpenCode title", async () => {
     const { fake } = await start({ edit: context => { context.route = { type: "home" } } })
     await fake.advance(IDLE_MS + 5_000)
     const [card, ...rest] = fake.execs[0].argv.slice(4)
     expect(rest).toEqual(["keys", "/opt/opencode/bin/opencode", "", "", "--server", SERVER_URL])
+    expect(card).toStartWith("\x1b]0;OpenCode\x07")
     expect(withoutSequences(card)).toContain("Press any key or click to wake.")
     expect(withoutSequences(card)).toContain("/work/project")
   })
@@ -86,13 +88,46 @@ describe("startNap", () => {
       const { fake } = await start()
       fake.state.size = undefined
       await fake.advance(IDLE_MS + 5_000)
-      expect(fake.execs[0].argv[4]).toBe(plainCard("Fix the flaky test"))
+      expect(fake.execs[0].argv[4]).toBe("\x1b]0;OC | Fix the flaky test\x07" + plainCard("Fix the flaky test"))
     })
 
     it("uses the plain text when reading the host throws", async () => {
       const card = await cardOf({ edit: context => { Object.defineProperty(context, "app", { get: () => { throw new Error("gone") } }) } })
-      expect(card).toBe(plainCard("Fix the flaky test"))
+      expect(card).toBe("\x1b]0;OC | Fix the flaky test\x07" + plainCard("Fix the flaky test"))
     })
+  })
+
+  it("replays the last successful renderer title and restores the setter on cleanup", async () => {
+    const fake = fakeProcess()
+    const context = fakeContext(fake.stdin)
+    const setter = function (this: unknown, title: string) {
+      expect(this).toBe(context.renderer)
+      if (title === "rejected") throw new Error(title)
+    }
+    const renderer = Object.assign(context.renderer, { setTerminalTitle: setter })
+    const cleanup = startNap(context, options, fakeLog(), fake.proc)
+    renderer.setTerminalTitle("first")
+    renderer.setTerminalTitle("Live  title")
+    expect(() => renderer.setTerminalTitle("rejected")).toThrow("rejected")
+    await fake.advance(IDLE_MS + 5_000)
+    expect(fake.execs[0].argv[4]).toStartWith("\x1b]0;Live  title\x07")
+    cleanup()
+    expect(renderer.setTerminalTitle).toBe(setter)
+  })
+
+  it("leaves the terminal title alone when OpenCode cleared or disabled it", async () => {
+    const cleared = await start({ edit: context => {
+      Object.assign(context.renderer, { setTerminalTitle: () => {} })
+    } })
+    const renderer = cleared.context.renderer as typeof cleared.context.renderer & { setTerminalTitle(title: string): void }
+    renderer.setTerminalTitle("")
+    const disabled = await start({ edit: context => {
+      Object.assign(context, { keymap: { commands: () => [{ id: "terminal.title.toggle", title: "Enable terminal title" }] } })
+    } })
+    for (const { fake } of [cleared, disabled]) {
+      await fake.advance(IDLE_MS + 5_000)
+      expect(fake.execs[0].argv[4]).not.toContain("\x1b]0;")
+    }
   })
 
   it("ac-focus-wake: a nap taken while unfocused wakes on focus, whichever rule took it", async () => {

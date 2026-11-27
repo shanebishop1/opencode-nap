@@ -14,6 +14,7 @@
 //   store         stores the file's text in plugin storage
 //   history-back  recalls the previous prompt from history
 //   clear         empties the prompt
+//   title         sets a custom terminal title
 import { createHash } from "node:crypto"
 import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
@@ -103,6 +104,7 @@ export default {
         prompt()?.setText("")
         return { prompt: prompt()?.plainText ?? null }
       },
+      title: text => { renderer.setTerminalTitle(text) },
     }
     let busy = false
     const control = setInterval(async () => {

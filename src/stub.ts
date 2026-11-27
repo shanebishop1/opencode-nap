@@ -1,6 +1,9 @@
+import { replaceControls } from "./text.js"
+
 export interface StubInput {
   /** The nap screen, printed verbatim; see card.ts. */
   card: string
+  terminalTitle?: string
   /** Whether regaining focus wakes it, for a nap taken while unfocused. */
   wakeOnFocus: boolean
   opencodePath: string
@@ -19,7 +22,7 @@ export interface StubExec {
 }
 
 // The stub is POSIX sh in two stages, run as
-// `sh -c STUB_SCRIPT sh <card> <wake> <opencode> <service file> <service version> <args...>`. Values only ever arrive
+// `sh -c STUB_SCRIPT sh <title and card> <wake> <opencode> <service file> <service version> <args...>`. Values only ever arrive
 // as positional parameters. In these template literals every backslash is
 // doubled and every `${` is escaped.
 //
@@ -176,12 +179,16 @@ printf '\\033[?25h\\033[0m\\033[2J\\033[H'
 # report), so only input that comes after the card wakes the stub.
 stty raw -echo min 0 time 1 2>/dev/null
 while IFS= read -r drained; do :; done
+# Report the title from the new process, after leaving the alternate screen.
 printf '%s' "$1"
 shift 5
 exec /bin/sh -c ${singleQuoted(WAIT_SCRIPT)} sh "$wake" "$opencode" "$service" "$version" "$@"
 `
 
 export function buildStubExec(input: StubInput): StubExec {
+  const title = replaceControls(input.terminalTitle ?? "")
+  // Match OpenTUI's 4096-byte control packet, including the OSC framing.
+  const titleSequence = title && Buffer.byteLength(title) <= 4091 ? `\x1b]0;${title}\x07` : ""
   return {
     file: "/bin/sh",
     argv: [
@@ -189,7 +196,7 @@ export function buildStubExec(input: StubInput): StubExec {
       "-c",
       STUB_SCRIPT,
       "sh",
-      input.card,
+      titleSequence + input.card,
       input.wakeOnFocus ? "focus" : "keys",
       input.opencodePath,
       input.service?.file ?? "",
