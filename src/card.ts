@@ -1,6 +1,7 @@
 import { footerRows, versionPlacements } from "./card-footer.js"
 import { lineWidth, logoLines } from "./card-logo.js"
 import { defaultPalette, type Palette } from "./palette.js"
+import { NAP_DETAIL as DETAIL, NAP_MESSAGE as MESSAGE } from "./message.js"
 import { abbreviateHome, truncatePath } from "./path.js"
 import { paint, type Placement } from "./screen.js"
 import { sanitizeText, takeWidth, textWidth } from "./text.js"
@@ -19,8 +20,6 @@ export interface CardInput {
 // The longest message line and its padding; narrower gets the plain text.
 const MIN_WIDTH = 42
 const MAX_VERSION_WIDTH = 16
-const MESSAGE = ["Napping to save memory.", "Press any key or click to wake."]
-const DETAIL = "Sessions keep running in the background."
 
 /** Where Yoga puts a child of `inner` cells centred in a column that starts at `start`. */
 const centered = (start: number, outer: number, inner: number): number => Math.round(start + (outer - inner) / 2)

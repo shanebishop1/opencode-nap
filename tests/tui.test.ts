@@ -75,6 +75,27 @@ describe("startNap", () => {
       await fake.advance(IDLE_MS + 5_000)
       return fake.execs[0].argv[4]
     }
+    const withFrame = (width: number, height: number): Setup => ({
+      edit: context => {
+        const white = { r: 1, g: 1, b: 1, a: 1 }
+        const row = (text: string) => ({ spans: [{ text: text.padEnd(width), width, fg: white, bg: white, attributes: 0 }] })
+        const lines = Array.from({ length: height }, (_, index) => row(index === 0 ? "last frame" : ""))
+        Object.assign(context.renderer, { currentRenderBuffer: { width, height, getSpanLines: () => lines } })
+      },
+    })
+
+    it("shows the TUI's last frame under the nap dialog when the renderer has one", async () => {
+      const card = withoutSequences(await cardOf(withFrame(120, 36)))
+      expect(card).toContain("last frame")
+      expect(card).toContain("OpenCode is sleeping")
+      expect(card).toContain("Press any key or click to wake.")
+    })
+
+    it("uses the logo card when the last frame is not the terminal's size", async () => {
+      const card = withoutSequences(await cardOf(withFrame(100, 36)))
+      expect(card).not.toContain("last frame")
+      expect(card).toContain("█▀▀█")
+    })
 
     it("uses OpenCode's default colours when the theme cannot be read", async () => {
       const card = await cardOf({ edit: context => { context.theme = undefined } })

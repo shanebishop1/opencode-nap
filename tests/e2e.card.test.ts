@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { napCard, plainCard } from "../src/card.js"
+import { plainCard } from "../src/card.js"
+import { FRAME_CARD_BUDGET } from "../src/frame-card.js"
 import { buildStubExec } from "../src/stub.js"
 import {
   cleanup, cliVersion, createScratch, createSession, e2eEnabled, startCommand, startServer, startTuiWith, stopTuis, type Scratch,
@@ -38,7 +39,7 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
 
   afterAll(cleanup, 60_000)
 
-  it("shows the logo and message and costs the napping shell no memory", async () => {
+  it("shows the last frame under the nap dialog and costs the napping shell no memory", async () => {
     const watch = await Watch.configure(scratch, "card", napOptions)
     const sessionID = await createSession(scratch, server.url)
     const tui = await startTuiWith(scratch, "card", ["--server", server.url, "-s", sessionID, scratch.project])
@@ -47,12 +48,11 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
 
     const napped = await run.waitForNap(NAP_TIMEOUT_MS)
     const drawn = stripEscapes(tui.output().slice(tui.output().lastIndexOf("\x1b[2J")))
-    expect(drawn, await run.context()).toContain("█▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█")
+    expect(drawn, await run.context()).toContain("OpenCode is sleeping")
     expect(drawn).toContain("Napping to save memory. Press any key or click to wake.")
     expect(drawn).toContain("Sessions keep running in the background.")
-    // Long scratch paths are cut to their last segments, so only the end is certain.
+    // The session screen the window showed is still there, around the dialog.
     expect(drawn).toContain("/project")
-    expect(drawn).toContain(cliVersion)
     // The stub prints once and waits: one shell and its reader, nothing else,
     // and the shell that waits no longer carries the card.
     expect(napped.count).toBe(2)
@@ -60,15 +60,8 @@ describe.skipIf(!e2eEnabled)(`OpenCode ${cliVersion}: the nap card`, () => {
 
     await Bun.sleep(1_000)
     expect((await processTree(tui.pid)).leaderRssKiB, await run.context()).toBeLessThan(NAPPED_LEADER_KIB)
-    // The window's own card, against the 0.1.1 plain text, in one environment.
-    const rich = napCard({
-      size: { width: 120, height: 40 },
-      palette: undefined,
-      title: "Fix the flaky test",
-      directory: scratch.project,
-      home: scratch.env.HOME,
-      version: cliVersion,
-    })
+    // The largest card a frame may make, against the 0.1.1 plain text, in one environment.
+    const rich = `\x1b[0m${"x".repeat(FRAME_CARD_BUDGET - 4)}`
     const [withCard, plain] = [await stubRss("card-stub", rich), await stubRss("plain-stub", plainCard(""))]
     console.log(`napped sh RSS: ${withCard} KiB with the card, ${plain} KiB with plain text (${withCard - plain} KiB more)`)
     expect(withCard - plain).toBeLessThan(RSS_BUDGET_KIB)
